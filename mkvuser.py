@@ -34,7 +34,7 @@ Segment info:
     MuxingApp: libebml v1.0.0 + libmatroska v1.0.0
     WritingApp: mkvmerge v4.0.0 ('The Stars were mine') built on Jun  6 2010 16:18:42
     4489: G6I
-    4461: 8g���>
+    4461: ......
     SegmentUID: 9d516a0f927a12d286e1502d23d0fdb0
 Tracks info:
     1 video V_MPEG4/ISO/AVC
