@@ -1,4 +1,4 @@
-# Licence==MIT
+# Licence==MIT; Vitaly "_Vi" Shukela 2012
 
 # Simple easy-to-use hacky matroska parser
 
@@ -35,7 +35,10 @@ def read_matroska_number(f, unmodified=False, signed=False):
     '''
     if unmodified and signed:
         raise Exception("Contradictary arguments")
-    r = ord(f.read(1))
+    first_byte=f.read(1)
+    if(first_byte==""):
+        raise StopIteration
+    r = ord(first_byte)
     (n,r2) = get_major_bit_number(r)
     if not unmodified:
         r=r2
@@ -46,6 +49,9 @@ def read_matroska_number(f, unmodified=False, signed=False):
         i-=1
     if signed:
         r-=(2**(7*n+7)-1)
+    else:
+        if r==2**(7*n+7)-1:
+            return (-1, n+1)
     return (r,n+1)
 
 def parse_matroska_number(data, pos, unmodified=False, signed=False):
@@ -80,6 +86,9 @@ def parse_matroska_number(data, pos, unmodified=False, signed=False):
         i-=1
     if signed:
         r-=(2**(7*n+6)-1)
+    else:
+        if r==2**(7*n+7)-1:
+            return (-1, pos)
     return (r,pos)
 
 def parse_xiph_number(data, pos):
@@ -201,19 +210,22 @@ element_types_names = {
     0xB0: (EET.UNSIGNED, "PixelWidth"),
     0xBA: (EET.UNSIGNED, "PixelHeight"),
 
-    0x1F43B675: (EET.MASTER, "Cluster"),
+    0x1F43B675: (EET.JUST_GO_ON, "Cluster"),
     0xE7: (EET.UNSIGNED, "TimeCode"),
     0xA7: (EET.UNSIGNED, "Position"),
     0xA3: (EET.BINARY, "SimpleBlock"),
     0xA0: (EET.MASTER, "BlockGroup"),
     0xA1: (EET.BINARY, "Block"),
     0x9B: (EET.UNSIGNED, "BlockDuration"),
+    0xAB: (EET.UNSIGNED, "PreviousClusterPosition"),
     
     0xEC: (EET.VOID, "Void"),
     0xBF: (EET.BINARY, "CRC-32"),
 
     0x114D9B74: (EET.MASTER, "SeekHead"),
     0x4DBB: (EET.MASTER, "Seek"),
+    0x53AB: (EET.BINARY, "SeekID"),
+    0x53AC: (EET.UNSIGNED, "SeekPosition"),
     0x1C53BB6B: (EET.MASTER, "Cues"),
     0x1941A469: (EET.MASTER, "Attachments"),
     0x1043A770: (EET.MASTER, "Chapters"),
@@ -245,6 +257,10 @@ def read_ebml_element_tree(f, total_size):
     childs=[]
     while(total_size>0):
         (id_, size, hsize) = read_ebml_element_header(f)
+        if size == -1:
+            print("Element %x without size? Damaged data? Skipping %d bytes" % (id_, size, total_size))
+            f.read(total_size);
+            break;
         if size>total_size:
             print("Element %x with size %d? Damaged data? Skipping %d bytes" % (id_, size, total_size))
             f.read(total_size);
@@ -340,8 +356,13 @@ def mkvparse(f, handler):
         Handles lacing, timecodes (except of per-track scaling)
     '''
     timecode_scale = 1000000
+    current_cluster_timecode = 0
     while f:
-        (id_, size, hsize) = read_ebml_element_header(f)
+        (id_, size, hsize) = (None, None, None)
+        try:
+            (id_, size, hsize) = read_ebml_element_header(f)
+        except StopIteration:
+            break;
         if not (id_ in element_types_names): 
             print("Unknown element with id %x and size %d"%(id_, size))
             f.read(size)
@@ -352,8 +373,7 @@ def mkvparse(f, handler):
             tree = read_ebml_element_tree(f, size)
         elif type==EET.JUST_GO_ON:
             pass
-        else:
-            f.read(size)
+
         if name=="EBML":
             d = dict(tree)
             if 'EBMLReadVersion' in d:
@@ -387,23 +407,24 @@ def mkvparse(f, handler):
                 if 'TrackTimecodeScale' in d:
                     print("Warning: TrackTimecodeScale is not supported")
             handler.tracks_available()
-        elif name=="Cluster":
-            d = dict(tree)
-            if not ("TimeCode" in d):
-                raise Exception("Timecodes in clusters are a must for this parser")
-            timecode = d['TimeCode']
-
-            for (k,v) in tree:
-                if k=="SimpleBlock":
-                    handle_block(v, handler, timecode, timecode_scale)
-                elif k=="BlockGroup":
-                    d2 = dict(v)
-                    duration=None
-                    if 'BlockDuration' in d2:
-                        duration = d2['BlockDuration']
-                        duration = duration*0.000000001*timecode_scale
-                    if 'Block' in d2:
-                        handle_block(d2['Block'], handler, timecode, timecode_scale, duration)
+        # cluster contents:
+        elif name=="TimeCode":
+            data=read_fixedlength_number(f, size, False)
+            current_cluster_timecode = data;
+        elif name=="SimpleBlock":
+            data=f.read(size)
+            handle_block(data, handler, current_cluster_timecode, timecode_scale)
+        elif name=="BlockGroup":
+            d2 = dict(tree)
+            duration=None
+            if 'BlockDuration' in d2:
+                duration = d2['BlockDuration']
+                duration = duration*0.000000001*timecode_scale
+            if 'Block' in d2:
+                handle_block(d2['Block'], handler, current_cluster_timecode, timecode_scale, duration)
+        else:
+            if size!=-1 and type!=EET.JUST_GO_ON and type!=EET.MASTER:
+                f.read(size)
 
 
 if __name__ == '__main__':
