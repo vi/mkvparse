@@ -8,6 +8,8 @@
 
 # See "mkvuser.py" for the example
 
+import traceback
+
 
 def get_major_bit_number(n):
     '''
@@ -296,7 +298,7 @@ class MatroskaHandler:
     def frame(self, track_id, timestamp, data, more_laced_frames, duration):
         pass
 
-def handle_block(buffer, handler, timecode, timecode_scale=1000000, duration=None):
+def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, duration=None):
     '''
         Decode a block, handling all lacings, send it to handler with appropriate timestamp, track number
     '''
@@ -306,7 +308,7 @@ def handle_block(buffer, handler, timecode, timecode_scale=1000000, duration=Non
     flags = ord(buffer[pos]); pos+=1
     laceflags=flags&0x06
 
-    block_timecode = (timecode + tcode)*(timecode_scale*0.000000001)
+    block_timecode = (cluster_timecode + tcode)*(timecode_scale*0.000000001)
 
     if laceflags == 0x00: # no lacing
         buf = buffer[pos:]
@@ -350,6 +352,30 @@ def handle_block(buffer, handler, timecode, timecode_scale=1000000, duration=Non
         more_laced_frames-=1
 
 
+def resync(f):
+    print("Resyncing")
+    while True:
+        b = f.read(1);
+        if b == "": return (None, None);
+        if b == "\x1F":
+            b2 = f.read(3);
+            if b2 == "\x43\xB6\x75":
+                (seglen, x) = read_matroska_number(f)
+                return (0x1F43B675, seglen) # cluster
+        if b == "\x18":
+            b2 = f.read(3)
+            if b2 == "\x53\x80\x67":
+                (seglen, x) = read_matroska_number(f)
+                return (0x18538067, seglen) # segment
+        if b == "\x16":
+            b2 = f.read(3)
+            if b2 == "\x54\xAE\x6B":
+                (seglen ,x )= read_matroska_number(f)
+                return (0x1654AE6B, seglen) # tracks
+                
+                
+    
+
 def mkvparse(f, handler):
     '''
         Read mkv file f and call handler methods when track or segment information is ready or when frame is read.
@@ -357,22 +383,45 @@ def mkvparse(f, handler):
     '''
     timecode_scale = 1000000
     current_cluster_timecode = 0
+    resync_element_id = None
+    resync_element_size = None
     while f:
         (id_, size, hsize) = (None, None, None)
-        try:
-            (id_, size, hsize) = read_ebml_element_header(f)
-        except StopIteration:
-            break;
-        if not (id_ in element_types_names): 
-            print("Unknown element with id %x and size %d"%(id_, size))
-            f.read(size)
-            continue
-        (type, name) = element_types_names[id_]
         tree = None
-        if type==EET.MASTER:
-            tree = read_ebml_element_tree(f, size)
-        elif type==EET.JUST_GO_ON:
-            pass
+        (type, name) = (None, None)
+        try:
+            if not resync_element_id:
+                try:
+                    (id_, size, hsize) = read_ebml_element_header(f)
+                except StopIteration:
+                    break;
+                if not (id_ in element_types_names): 
+                    print("Unknown element with id %x and size %d"%(id_, size))
+                    (resync_element_id, resync_element_size) = resync(f)
+                    if resync_element_id:
+                        continue;
+                    else:
+                        break;
+            else: 
+                id_ = resync_element_id
+                size=resync_element_size
+                resync_element_id = None
+                resync_element_size = None
+
+            (type, name) = element_types_names[id_]
+
+            if type==EET.MASTER:
+                tree = read_ebml_element_tree(f, size)
+            elif type==EET.JUST_GO_ON:
+                pass
+        except Exception:
+            traceback.print_exc()
+            (resync_element_id, resync_element_size) = resync(f)
+            if resync_element_id:
+                continue;
+            else:
+                break;
+            
 
         if name=="EBML":
             d = dict(tree)
