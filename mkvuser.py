@@ -7,7 +7,7 @@ class MatroskaUser(mkvparse.MatroskaHandler):
         print("Tracks info:")
         for k in self.tracks:
             t=self.tracks[k]
-            print("    %d %s %s"%(k, t['type'], t['CodecID']))
+            print("    %d %s %s"%(k, t['type'][1], t['CodecID'][1]))
 
     def segment_info_available(self):
         print("Segment info:")
