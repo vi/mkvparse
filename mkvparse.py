@@ -393,6 +393,37 @@ element_types_names = {
 	0x4485: (EET.BINARY, "TagBinary"),
 }
 
+def read_simple_element(f, type, size):
+    date = None
+    if type==EET.UNSIGNED:
+        data=read_fixedlength_number(f, size, False)
+    elif type==EET.SIGNED:
+        data=read_fixedlength_number(f, size, True)
+    elif type==EET.TEXTA:
+        data=f.read(size)
+        data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
+    elif type==EET.TEXTU:
+        data=f.read(size)
+        data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
+    elif type==EET.MASTER:
+        data=read_ebml_element_tree(f, size)
+    elif type==EET.DATE:
+        data=read_fixedlength_number(f, size, True)
+        data/=1000000000.0;
+        data+=978300000 # 2001-01-01T00:00:00,000000000
+        # now should be UNIX date
+    elif type==EET.FLOAT:
+        if size==4:
+            data = f.read(4)
+            data = unpack(">f", data)[0]
+        else:
+            data=read_fixedlength_number(f, size, False)
+            sys.stderr.write("Floating point of size %d is not supported\n" % size)
+            data = None
+    else:
+        data=f.read(size)
+    return data
+
 def read_ebml_element_tree(f, total_size):
     '''
         Build tree of elements, reading f until total_size reached
@@ -416,34 +447,7 @@ def read_ebml_element_tree(f, total_size):
         name = "%x"%id_
         if id_ in element_types_names:
             (type, name) = element_types_names[id_]
-        data=None
-        if type==EET.UNSIGNED:
-            data=read_fixedlength_number(f, size, False)
-        elif type==EET.SIGNED:
-            data=read_fixedlength_number(f, size, True)
-        elif type==EET.TEXTA:
-            data=f.read(size)
-            data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
-        elif type==EET.TEXTU:
-            data=f.read(size)
-            data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
-        elif type==EET.MASTER:
-            data=read_ebml_element_tree(f, size)
-        elif type==EET.DATE:
-            data=read_fixedlength_number(f, size, True)
-            data/=1000000000.0;
-            data+=978300000 # 2001-01-01T00:00:00,000000000
-            # now should be UNIX date
-        elif type==EET.FLOAT:
-            if size==4:
-                data = f.read(4)
-                data = unpack(">f", data)[0]
-            else:
-                data=read_fixedlength_number(f, size, False)
-                sys.stderr.write("Floating point of size %d is not supported\n" % size)
-                data = None
-        else:
-            data=f.read(size)
+        data = read_simple_element(f, type, size)
         total_size-=(size+hsize)
         childs.append((name, (type, data))) 
     return childs
@@ -635,19 +639,8 @@ def mkvparse(f, handler):
             if 'Block' in d2:
                 handle_block(d2['Block'][1], handler, current_cluster_timecode, timecode_scale, duration)
         else:
-            if type==EET.UNSIGNED:
-                data=read_fixedlength_number(f, size, False)
-            elif type==EET.SIGNED:
-                data=read_fixedlength_number(f, size, True)
-            elif type==EET.TEXTA:
-                data=f.read(size)
-                data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
-            elif type==EET.TEXTU:
-                data=f.read(size)
-                data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
-            elif size!=-1 and type!=EET.JUST_GO_ON and type!=EET.MASTER:
-                f.read(size)
-                
+            if type!=EET.JUST_GO_ON and type!=EET.MASTER:
+                data = read_simple_element(f, type, size)
 
         handler.ebml_top_element(id_, name, type, data);
 
