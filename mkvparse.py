@@ -445,6 +445,8 @@ class MatroskaHandler:
         pass
     def frame(self, track_id, timestamp, data, more_laced_frames, duration):
         pass
+    def ebml_top_element(self, id_, name_, type_, data_):
+        pass
 
 def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, duration=None):
     '''
@@ -536,6 +538,7 @@ def mkvparse(f, handler):
     while f:
         (id_, size, hsize) = (None, None, None)
         tree = None
+        data = None
         (type, name) = (None, None)
         try:
             if not resync_element_id:
@@ -560,6 +563,7 @@ def mkvparse(f, handler):
 
             if type==EET.MASTER:
                 tree = read_ebml_element_tree(f, size)
+                data = tree
             elif type==EET.JUST_GO_ON:
                 pass
         except Exception:
@@ -569,8 +573,7 @@ def mkvparse(f, handler):
                 continue;
             else:
                 break;
-            
-
+        
         if name=="EBML":
             d = dict(tree)
             if 'EBMLReadVersion' in d:
@@ -622,6 +625,9 @@ def mkvparse(f, handler):
         else:
             if size!=-1 and type!=EET.JUST_GO_ON and type!=EET.MASTER:
                 f.read(size)
+
+        handler.ebml_top_element(id_, name, type, data);
+
 
 
 if __name__ == '__main__':
