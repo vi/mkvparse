@@ -443,8 +443,8 @@ def read_ebml_element_tree(f, total_size):
             print("Element %x with size %d? Damaged data? Skipping %d bytes" % (id_, size, total_size))
             f.read(total_size);
             break
-        type = None
-        name = "%x"%id_
+        type = EET.BINARY
+        name = "unknown_%x"%id_
         if id_ in element_types_names:
             (type, name) = element_types_names[id_]
         data = read_simple_element(f, type, size)
