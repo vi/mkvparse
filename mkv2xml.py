@@ -6,6 +6,8 @@ import mkvparse
 import sys
 import re
 
+from xml.sax import saxutils
+
 def chunks(s, n):
     """Produce `n`-character chunks from `s`."""
     for start in range(0, len(s), n):
@@ -17,6 +19,11 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         self.there_was_segment=False
         self.there_was_cluster=False
         self.indent=0
+
+        self.lb_track_id=None
+        self.lb_ts=None
+        self.lb_data=[]
+        self.lb_duration=None
         print "<mkv2xml>"
 
     def __del__(self):
@@ -33,19 +40,35 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         pass;
 
     def frame(self, track_id, timestamp, data, more_laced_frames, duration):
-        durstr=""
-        if duration:
-            durstr="dur=%.6f"%duration
-        print("Frame for %d ts=%.06f l=%d %s len=%d data=%s..." %
-                (track_id, timestamp, more_laced_frames, durstr, len(data), data[0:10].encode("hex")))
-
-
+        self.lb_duration=duration
+        self.lb_track_id=track_id
+        self.lb_ts=timestamp
+        self.lb_data.append(data)
 
     def printtree(self, list_, ident):
         ident_ = "  "*ident;
         for (name_, (type_, data_)) in list_:
             if type_ == mkvparse.EbmlElementType.BINARY:
-                if data_:
+                if name_ == "SimpleBlock" or name_ == "Block":
+                    newdata ="\n  "+ident_+"<track>%s</track>"%self.lb_track_id;
+                    newdata+="\n  "+ident_+"<timecode>%s</timecode>"%self.lb_ts;
+                    if(self.lb_duration):
+                        newdata+="\n  "+ident_+"<duration>%s</duration>"%self.lb_duration;
+                    for data_2 in self.lb_data:
+                        newdata+="\n  "+ident_+"<data>";
+                        for chunk in chunks(data_2.encode("hex"), 64):
+                            newdata+="\n    "+ident_;
+                            newdata+=chunk;
+                        newdata+="\n  "+ident_+"</data>";
+                    newdata+="\n"+ident_;
+                    data_=newdata
+
+                    self.lb_duration=None
+                    self.lb_track_id=None
+                    self.lb_ts=None
+                    self.lb_data=[]
+
+                elif data_:
                     data_ = data_.encode("hex")
                     if len(data_) > 40:
                         newdata=""
@@ -74,6 +97,8 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                 else:
                     sys.stderr.write("Unknown JUST_GO_ON element %s\n" % name_)
             else:
+                if type_ == mkvparse.EbmlElementType.TEXTA or type_ == mkvparse.EbmlElementType.TEXTU:
+                    data_ = saxutils.escape(str(data_))
                 print("%s<%s>%s</%s>"%(ident_, name_, data_, name_));
             
         
@@ -84,6 +109,6 @@ class MatroskaToText(mkvparse.MatroskaHandler):
 
 
 # Reads mkv input from stdin, parse it and print details to stdout
-mkvparse.mkvparse(sys.stdin, MatroskaToText())
+mkvparse.mkvparse(sys.stdin, MatroskaToText(frozenset([])))
 
 
