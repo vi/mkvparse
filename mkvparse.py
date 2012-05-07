@@ -608,7 +608,7 @@ def mkvparse(f, handler):
                     print("Warning: TrackTimecodeScale is not supported")
             handler.tracks_available()
         # cluster contents:
-        elif name=="TimeCode":
+        elif name=="Timecode":
             data=read_fixedlength_number(f, size, False)
             current_cluster_timecode = data;
         elif name=="SimpleBlock":
