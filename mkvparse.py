@@ -624,8 +624,19 @@ def mkvparse(f, handler):
             if 'Block' in d2:
                 handle_block(d2['Block'][1], handler, current_cluster_timecode, timecode_scale, duration)
         else:
-            if size!=-1 and type!=EET.JUST_GO_ON and type!=EET.MASTER:
+            if type==EET.UNSIGNED:
+                data=read_fixedlength_number(f, size, False)
+            elif type==EET.SIGNED:
+                data=read_fixedlength_number(f, size, True)
+            elif type==EET.TEXTA:
+                data=f.read(size)
+                data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
+            elif type==EET.TEXTU:
+                data=f.read(size)
+                data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
+            elif size!=-1 and type!=EET.JUST_GO_ON and type!=EET.MASTER:
                 f.read(size)
+                
 
         handler.ebml_top_element(id_, name, type, data);
 
