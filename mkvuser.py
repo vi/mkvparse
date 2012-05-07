@@ -11,8 +11,8 @@ class MatroskaUser(mkvparse.MatroskaHandler):
 
     def segment_info_available(self):
         print("Segment info:")
-        for (k,v) in self.segment_info:
-            if k=="SegmentUID": v=v.encode("hex")
+        for (k,(t_,v)) in self.segment_info:
+            if t_ == mkvparse.EbmlElementType.BINARY: v=v.encode("hex")
             print("    %s: %s"%(k,v))
 
     def frame(self, track_id, timestamp, data, more_laced_frames, duration):

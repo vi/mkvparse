@@ -433,7 +433,7 @@ def read_ebml_element_tree(f, total_size):
         else:
             data=f.read(size)
         total_size-=(size+hsize)
-        childs.append((name, data)) 
+        childs.append((name, (type, data))) 
     return childs
                 
 
@@ -574,10 +574,10 @@ def mkvparse(f, handler):
         if name=="EBML":
             d = dict(tree)
             if 'EBMLReadVersion' in d:
-                if d['EBMLReadVersion']>1: print("Warning: EBMLReadVersion too big")
+                if d['EBMLReadVersion'][1]>1: print("Warning: EBMLReadVersion too big")
             if 'DocTypeReadVersion' in d:
-                if d['DocTypeReadVersion']>2: print("Warning: DocTypeReadVersion too big")
-            dt = d['DocType']
+                if d['DocTypeReadVersion'][1]>2: print("Warning: DocTypeReadVersion too big")
+            dt = d['DocType'][1]
             if dt != "matroska" and dt != "webm": print("Warning: EBML DocType is not \"matroska\" or \"webm\"")
         elif name=="Info":
             handler.segment_info = tree
@@ -585,15 +585,15 @@ def mkvparse(f, handler):
             
             d = dict(tree)
             if "TimecodeScale" in d:
-                timecode_scale = d["TimecodeScale"]
+                timecode_scale = d["TimecodeScale"][1]
         elif name=="Tracks":
             handler.tracks={}
-            for (ten, track) in tree:
+            for (ten, (_t, track)) in tree:
                 if ten != "TrackEntry": continue
                 d = dict(track)
-                n = d['TrackNumber']
+                n = d['TrackNumber'][1]
                 handler.tracks[n]=d
-                tt = d['TrackType']
+                tt = d['TrackType'][1]
                 if   tt==0x01: d['type']='video'
                 elif tt==0x02: d['type']='audio'
                 elif tt==0x03: d['type']='complex'
@@ -615,10 +615,10 @@ def mkvparse(f, handler):
             d2 = dict(tree)
             duration=None
             if 'BlockDuration' in d2:
-                duration = d2['BlockDuration']
+                duration = d2['BlockDuration'][1]
                 duration = duration*0.000000001*timecode_scale
             if 'Block' in d2:
-                handle_block(d2['Block'], handler, current_cluster_timecode, timecode_scale, duration)
+                handle_block(d2['Block'][1], handler, current_cluster_timecode, timecode_scale, duration)
         else:
             if size!=-1 and type!=EET.JUST_GO_ON and type!=EET.MASTER:
                 f.read(size)
