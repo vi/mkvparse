@@ -9,7 +9,7 @@
 # See "mkvuser.py" for the example
 
 import traceback
-
+from struct import unpack
 
 def get_major_bit_number(n):
     '''
@@ -393,8 +393,6 @@ element_types_names = {
 	0x4485: (EET.BINARY, "TagBinary"),
 }
 
-
-
 def read_ebml_element_tree(f, total_size):
     '''
         Build tree of elements, reading f until total_size reached
@@ -431,6 +429,19 @@ def read_ebml_element_tree(f, total_size):
             data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
         elif type==EET.MASTER:
             data=read_ebml_element_tree(f, size)
+        elif type==EET.DATE:
+            data=read_fixedlength_number(f, size, True)
+            data/=1000000000.0;
+            data+=978300000 # 2001-01-01T00:00:00,000000000
+            # now should be UNIX date
+        elif type==EET.FLOAT:
+            if size==4:
+                data = f.read(4)
+                data = unpack(">f", data)[0]
+            else:
+                data=read_fixedlength_number(f, size, False)
+                sys.stderr.write("Floating point of size %d is not supported\n" % size)
+                data = None
         else:
             data=f.read(size)
         total_size-=(size+hsize)
