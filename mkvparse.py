@@ -416,6 +416,9 @@ def read_simple_element(f, type, size):
         if size==4:
             data = f.read(4)
             data = unpack(">f", data)[0]
+        elif size==8:
+            data = f.read(8)
+            data = unpack(">d", data)[0]
         else:
             data=read_fixedlength_number(f, size, False)
             sys.stderr.write("Floating point of size %d is not supported\n" % size)
