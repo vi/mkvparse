@@ -13,6 +13,19 @@ def chunks(s, n):
 
 
 class MatroskaToText(mkvparse.MatroskaHandler):
+    def __init__(self):
+        self.there_was_segment=False
+        self.there_was_cluster=False
+        self.indent=0
+        print "<mkv2xml>"
+
+    def __del__(self):
+        if self.there_was_cluster:
+            print "</Cluster>"
+        if self.there_was_segment:
+            print "</Segment>"
+        print "</mkv2xml>"
+
     def tracks_available(self):
         pass;
 
@@ -36,7 +49,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                     data_ = data_.encode("hex")
                     if len(data_) > 40:
                         newdata=""
-                        for chunk in chunks(data_, 60):
+                        for chunk in chunks(data_, 64):
                             newdata+="\n  "+ident_;
                             newdata+=chunk;
                         newdata+="\n"+ident_;
@@ -46,13 +59,27 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                 print("%s<%s>"%(ident_,name_))
                 self.printtree(data_, ident+1);
                 print("%s</%s>"%(ident_, name_))
+            elif type_ == mkvparse.EbmlElementType.JUST_GO_ON:
+                if name_ == "Segment":
+                    if self.there_was_segment:
+                        print("</Segment>")
+                    print("<Segment>")
+                    self.there_was_segment=True
+                elif name_ == "Cluster":
+                    if self.there_was_cluster:
+                        print("</Cluster>")
+                    print("<Cluster>")
+                    self.there_was_cluster=True
+                    self.indent=1
+                else:
+                    sys.stderr.write("Unknown JUST_GO_ON element %s\n" % name_)
             else:
                 print("%s<%s>%s</%s>"%(ident_, name_, data_, name_));
             
         
 
     def ebml_top_element(self, id_, name_, type_, data_):
-        self.printtree([(name_, (type_, data_))], 0)
+        self.printtree([(name_, (type_, data_))], self.indent)
 
 
 
