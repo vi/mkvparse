@@ -46,24 +46,43 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         self.lb_ts=timestamp
         self.lb_data.append(data)
 
-    def printtree(self, list_, ident):
-        ident_ = "  "*ident;
+    def printtree(self, list_, indent):
+        indent_ = "  "*indent;
         for (name_, (type_, data_)) in list_:
+            if self.there_was_cluster and \
+                name_ != "Timecode" and \
+                name_ != "SilentTracks" and \
+                name_ != "Position" and \
+                name_ != "PrevSize" and \
+                name_ != "SimpleBlock" and \
+                name_ != "BlockGroup" and \
+                name_ != "Void" and \
+                name_ != "CRC-32" and \
+                name_ != "SignatureSlot" and \
+                name_ != "EncryptedBlock" and \
+                indent == self.indent:
+                # looks like our Cluster aleady ended somewhere
+                indent_=""
+                indent=0
+                self.indent=0
+                print "</Cluster>"
+                self.there_was_cluster=False
+
             if name_ in self.banlist:
                 continue;
             if type_ == mkvparse.EbmlElementType.BINARY:
                 if name_ == "SimpleBlock" or name_ == "Block":
-                    newdata ="\n  "+ident_+"<track>%s</track>"%self.lb_track_id;
-                    newdata+="\n  "+ident_+"<timecode>%s</timecode>"%self.lb_ts;
+                    newdata ="\n  "+indent_+"<track>%s</track>"%self.lb_track_id;
+                    newdata+="\n  "+indent_+"<timecode>%s</timecode>"%self.lb_ts;
                     if(self.lb_duration):
-                        newdata+="\n  "+ident_+"<duration>%s</duration>"%self.lb_duration;
+                        newdata+="\n  "+indent_+"<duration>%s</duration>"%self.lb_duration;
                     for data_2 in self.lb_data:
-                        newdata+="\n  "+ident_+"<data>";
+                        newdata+="\n  "+indent_+"<data>";
                         for chunk in chunks(data_2.encode("hex"), 64):
-                            newdata+="\n    "+ident_;
+                            newdata+="\n    "+indent_;
                             newdata+=chunk;
-                        newdata+="\n  "+ident_+"</data>";
-                    newdata+="\n"+ident_;
+                        newdata+="\n  "+indent_+"</data>";
+                    newdata+="\n"+indent_;
                     data_=newdata
 
                     self.lb_duration=None
@@ -76,15 +95,15 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                     if len(data_) > 40:
                         newdata=""
                         for chunk in chunks(data_, 64):
-                            newdata+="\n  "+ident_;
+                            newdata+="\n  "+indent_;
                             newdata+=chunk;
-                        newdata+="\n"+ident_;
+                        newdata+="\n"+indent_;
                         data_=newdata
 
             if type_ == mkvparse.EbmlElementType.MASTER:
-                print("%s<%s>"%(ident_,name_))
-                self.printtree(data_, ident+1);
-                print("%s</%s>"%(ident_, name_))
+                print("%s<%s>"%(indent_,name_))
+                self.printtree(data_, indent+1);
+                print("%s</%s>"%(indent_, name_))
             elif type_ == mkvparse.EbmlElementType.JUST_GO_ON:
                 if name_ == "Segment":
                     if self.there_was_segment:
@@ -92,8 +111,6 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                     print("<Segment>")
                     self.there_was_segment=True
                 elif name_ == "Cluster":
-                    if self.there_was_cluster:
-                        print("</Cluster>")
                     print("<Cluster>")
                     self.there_was_cluster=True
                     self.indent=1
@@ -102,7 +119,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
             else:
                 if type_ == mkvparse.EbmlElementType.TEXTA or type_ == mkvparse.EbmlElementType.TEXTU:
                     data_ = saxutils.escape(str(data_))
-                print("%s<%s>%s</%s>"%(ident_, name_, data_, name_));
+                print("%s<%s>%s</%s>"%(indent_, name_, data_, name_));
             
         
 
