@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# incomplete version, wait for normal one and for "xml2mkv.py"
+# Wait for complementary "xml2mkv"
 
 import mkvparse
 import sys
