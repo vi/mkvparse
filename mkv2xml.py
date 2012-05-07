@@ -113,6 +113,8 @@ class MatroskaToText(mkvparse.MatroskaHandler):
 
 # Reads mkv input from stdin, parse it and print details to stdout
 banlist=["SeekHead", "CRC-32", "Void", "Cues", "PrevSize", "Position"]
+if len(sys.argv)>1 and sys.argv[1]=="-v":
+    banlist=[]
 mkvparse.mkvparse(sys.stdin, MatroskaToText(frozenset(banlist)))
 
 
