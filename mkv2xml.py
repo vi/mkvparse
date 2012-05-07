@@ -15,7 +15,7 @@ def chunks(s, n):
 
 
 class MatroskaToText(mkvparse.MatroskaHandler):
-    def __init__(self):
+    def __init__(self, banlist):
         self.there_was_segment=False
         self.there_was_cluster=False
         self.indent=0
@@ -24,6 +24,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         self.lb_ts=None
         self.lb_data=[]
         self.lb_duration=None
+        self.banlist=banlist
         print "<mkv2xml>"
 
     def __del__(self):
@@ -48,6 +49,8 @@ class MatroskaToText(mkvparse.MatroskaHandler):
     def printtree(self, list_, ident):
         ident_ = "  "*ident;
         for (name_, (type_, data_)) in list_:
+            if name_ in self.banlist:
+                continue;
             if type_ == mkvparse.EbmlElementType.BINARY:
                 if name_ == "SimpleBlock" or name_ == "Block":
                     newdata ="\n  "+ident_+"<track>%s</track>"%self.lb_track_id;
@@ -109,6 +112,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
 
 
 # Reads mkv input from stdin, parse it and print details to stdout
-mkvparse.mkvparse(sys.stdin, MatroskaToText(frozenset([])))
+banlist=["SeekHead", "CRC-32", "Void", "Cues", "PrevSize", "Position"]
+mkvparse.mkvparse(sys.stdin, MatroskaToText(frozenset(banlist)))
 
 
