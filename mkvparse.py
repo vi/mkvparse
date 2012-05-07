@@ -428,6 +428,7 @@ def read_ebml_element_tree(f, total_size):
             data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
         elif type==EET.TEXTU:
             data=f.read(size)
+            data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
         elif type==EET.MASTER:
             data=read_ebml_element_tree(f, size)
         else:
