@@ -48,11 +48,14 @@ class MatroskaToText(mkvparse.MatroskaHandler):
     def segment_info_available(self):
         pass;
 
-    def frame(self, track_id, timestamp, data, more_laced_frames, duration):
+    def frame(self, track_id, timestamp, data, more_laced_frames, duration, keyframe, invisible, discardable):
         self.lb_duration=duration
         self.lb_track_id=track_id
         self.lb_ts=timestamp
         self.lb_data.append(data)
+        self.lb_keyframe = keyframe
+        self.lb_invisible = invisible
+        self.lb_discardable = discardable
 
     def printtree(self, list_, indent):
         indent_ = "  "*indent;
@@ -86,8 +89,11 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                 if name_ == "SimpleBlock" or name_ == "Block":
                     newdata ="\n  "+indent_+"<track>%s</track>"%self.lb_track_id;
                     newdata+="\n  "+indent_+"<timecode>%s</timecode>"%self.lb_ts;
-                    if(self.lb_duration):
+                    if self.lb_duration:
                         newdata+="\n  "+indent_+"<duration>%s</duration>"%self.lb_duration;
+                    if self.lb_keyframe:     newdata+="\n  "+indent_+"<keyframe/>" 
+                    if self.lb_invisible:    newdata+="\n  "+indent_+"<invisible/>"
+                    if self.lb_discardable:  newdata+="\n  "+indent_+"<discardable/>"
                     for data_2 in self.lb_data:
                         if self.lb_track_id in self.text_tracks:
                             newdata+="\n  "+indent_+"<data encoding=\"text\"><![CDATA["

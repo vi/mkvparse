@@ -15,12 +15,15 @@ class MatroskaUser(mkvparse.MatroskaHandler):
             if t_ == mkvparse.EbmlElementType.BINARY: v=v.encode("hex")
             print("    %s: %s"%(k,v))
 
-    def frame(self, track_id, timestamp, data, more_laced_frames, duration):
-        durstr=""
+    def frame(self, track_id, timestamp, data, more_laced_frames, duration, keyframe, invisible, discardable):
+        addstr=""
         if duration:
-            durstr="dur=%.6f"%duration
+            addstr="dur=%.6f"%duration
+        if keyframe: addstr+=" key"
+        if invisible: addstr+=" invis"
+        if discardable: addstr+=" disc"
         print("Frame for %d ts=%.06f l=%d %s len=%d data=%s..." %
-                (track_id, timestamp, more_laced_frames, durstr, len(data), data[0:10].encode("hex")))
+                (track_id, timestamp, more_laced_frames, addstr, len(data), data[0:10].encode("hex")))
 
 
 # Reads mkv input from stdin, parse it and print details to stdout

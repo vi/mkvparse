@@ -462,7 +462,7 @@ class MatroskaHandler:
         pass
     def segment_info_available(self):
         pass
-    def frame(self, track_id, timestamp, data, more_laced_frames, duration):
+    def frame(self, track_id, timestamp, data, more_laced_frames, duration, keyframe, invisible, discardable):
         pass
     def ebml_top_element(self, id_, name_, type_, data_):
         pass
@@ -475,13 +475,16 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
     (tracknum, pos) = parse_matroska_number(buffer, pos, signed=False)
     (tcode, pos) = parse_fixedlength_number(buffer, pos, 2, signed=True)
     flags = ord(buffer[pos]); pos+=1
+    f_keyframe = (flags&0x80 == 0x80)
+    f_invisible = (flags&0x08 == 0x08)
+    f_discardable = (flags&0x01 == 0x01)
     laceflags=flags&0x06
 
     block_timecode = (cluster_timecode + tcode)*(timecode_scale*0.000000001)
 
     if laceflags == 0x00: # no lacing
         buf = buffer[pos:]
-        handler.frame(tracknum, block_timecode, buf, 0, duration)
+        handler.frame(tracknum, block_timecode, buf, 0, duration, f_keyframe, f_invisible, f_discardable)
         return
     
     numframes = ord(buffer[pos]); pos+=1
@@ -517,7 +520,7 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
     for i in lengths:
         buf = buffer[pos:pos+i]
         pos+=i
-        handler.frame(tracknum, block_timecode, buf, more_laced_frames, None)
+        handler.frame(tracknum, block_timecode, buf, more_laced_frames, None, f_keyframe, f_invisible, f_discardable)
         more_laced_frames-=1
 
 
