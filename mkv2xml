@@ -90,9 +90,9 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                         newdata+="\n  "+indent_+"<duration>%s</duration>"%self.lb_duration;
                     for data_2 in self.lb_data:
                         if self.lb_track_id in self.text_tracks:
-                            newdata+="\n  "+indent_+"<data encoding=\"text\"><![CDATA[\n"
+                            newdata+="\n  "+indent_+"<data encoding=\"text\"><![CDATA["
                             newdata+= data_2.replace("\x00","").replace("]]>", "]]]]><![CDATA[>")
-                            newdata+="]]>\n  "+indent_+"</data>";
+                            newdata+="]]></data>";
                         else:
                             newdata+="\n  "+indent_+"<data>";
                             for chunk in chunks(data_2.encode("hex"), 64):
@@ -110,7 +110,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                 elif data_:
                     if name_ == "CodecPrivate" and self.going_to_be_textual_codec_private:
                         data_ = data_.replace("]]>", "]]]]><![CDATA[>")
-                        data_ = "<![CDATA[\n" + data_ + "\n]]>"
+                        data_ = "<![CDATA[" + data_ + "]]>"
                         opening_tag_content = "CodecPrivate encoding=\"text\""
                     else:
                         data_ = data_.encode("hex")
