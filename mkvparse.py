@@ -395,6 +395,9 @@ element_types_names = {
 
 def read_simple_element(f, type, size):
     date = None
+    if size==0:
+        return ""
+
     if type==EET.UNSIGNED:
         data=read_fixedlength_number(f, size, False)
     elif type==EET.SIGNED:
