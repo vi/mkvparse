@@ -19,4 +19,11 @@ Supports lacing and setting global timecode scale, subtitles (BlockGroup). Does 
 
 Also contains example of generation of Matroska files from python
 
+Also contains mkv2xml and xml2mkv: tools that convert Matroska files to/from XML plaintext. [Example XML file](http://vi-server.org/pub/xml2mkv_test.xml) . Example command:
+
+    $ cat test3.mkv | ./mkv2xml | ./xml2mkv | mplayer - # convert to XML and back and play
+
+Subtitles should remain as text, binary data gets encoded to hex.
+
+
 Licence=MIT
