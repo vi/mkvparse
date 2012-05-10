@@ -28,6 +28,14 @@ class MatroskaToText(mkvparse.MatroskaHandler):
 
         self.text_tracks=frozenset([])
         self.going_to_be_textual_codec_private = False
+
+        self.lb_duration=None
+        self.lb_track_id=555
+        self.lb_ts=555.5
+        self.lb_data=[]
+        self.lb_keyframe = False
+        self.lb_invisible = False
+        self.lb_discardable = False
         print "<mkv2xml>"
 
     def __del__(self):
