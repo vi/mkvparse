@@ -1,0 +1,469 @@
+#!/usr/bin/env python
+
+# Read mkv2xml's output and convert it back to matroska file (not verbatim). License=MIT, 2012, Vitaly "_Vi" Shukela
+
+import sys
+
+from xml.sax import make_parser, handler
+from struct import pack
+
+def big_endian_number(number, signed=False):
+    if number<0:
+        r=0x100
+        while number + r < r/2:
+            r<<=8
+        number+=r
+        if number<0x100:
+            return chr(number)
+        signed=False
+    elif (number<0x100 and not signed) or number < 0x80:
+        return chr(number)
+    return big_endian_number(number>>8, signed) + chr(number&0xFF)
+
+ben=big_endian_number
+
+def ebml_encode_number(number):
+    def trailing_bits(rest_of_number, number_of_bits):
+        # like big_endian_number, but can do padding zeroes
+        if number_of_bits==8:
+            return chr(rest_of_number&0xFF);
+        else:
+            return trailing_bits(rest_of_number>>8, number_of_bits-8) + chr(rest_of_number&0xFF)
+
+    if number == -1:
+        return chr(0xFF)
+    if number < 2**7 - 1:
+        return chr(number|0x80)
+    if number < 2**14 - 1:
+        return chr(0x40 | (number>>8)) + trailing_bits(number, 8)
+    if number < 2**21 - 1:
+        return chr(0x20 | (number>>16)) + trailing_bits(number, 16)
+    if number < 2**28 - 1:
+        return chr(0x10 | (number>>24)) + trailing_bits(number, 24)
+    if number < 2**35 - 1:
+        return chr(0x08 | (number>>32)) + trailing_bits(number, 32)
+    if number < 2**42 - 1:
+        return chr(0x04 | (number>>40)) + trailing_bits(number, 40)
+    if number < 2**49 - 1:
+        return chr(0x02 | (number>>48)) + trailing_bits(number, 48)
+    if number < 2**56 - 1:
+        return chr(0x01) + trailing_bits(number, 56)
+    raise Exception("NUMBER TOO BIG")
+
+
+class EbmlElementType:
+    VOID=0
+    MASTER=1 # read all subelements and return tree. Don't use this too large things like Segment
+    UNSIGNED=2
+    SIGNED=3
+    TEXTA=4
+    TEXTU=5
+    BINARY=6
+    FLOAT=7
+    DATE=8
+
+    JUST_GO_ON=10 # For "Segment". 
+    # Actually MASTER, but don't build the tree for all subelements, 
+    # interpreting all child elements as if they were top-level elements
+    
+
+EET=EbmlElementType
+
+# lynx -width=10000 -dump http://matroska.org/technical/specs/index.html sed 's/not 0/not0/g; s/> 0/>0/g; s/Sampling Frequency/SamplingFrequency/g' | awk '{print $1 " " $3 " " $8}' | grep '\[..\]' | perl -ne '/(\S+) (\S+) (.)/; $name=$1; $id=$2; $type=$3; $id=~s/\[|\]//g; %types = (m=>"EET.MASTER", u=>"EET.UNSIGNED", i=>"EET.SIGNED", 8=>"EET.TEXTU", s=>"EET.TEXTA", b=>"EET.BINARY", f=>"EET.FLOAT", d=>"EET.DATE"); $t=$types{$type}; next unless $t; $id=~s/../\\x$&/g; $t="EET.JUST_GO_ON" if $name eq "Segment" or $name eq "Cluster"; print "\t\"$name\": (\"$id\", $t),\n";'
+element_types_names = {
+ 	"EBML": ("\x1A\x45\xDF\xA3", EET.MASTER),
+	"EBMLVersion": ("\x42\x86", EET.UNSIGNED),
+	"EBMLReadVersion": ("\x42\xF7", EET.UNSIGNED),
+	"EBMLMaxIDLength": ("\x42\xF2", EET.UNSIGNED),
+	"EBMLMaxSizeLength": ("\x42\xF3", EET.UNSIGNED),
+	"DocType": ("\x42\x82", EET.TEXTA),
+	"DocTypeVersion": ("\x42\x87", EET.UNSIGNED),
+	"DocTypeReadVersion": ("\x42\x85", EET.UNSIGNED),
+	"Void": ("\xEC", EET.BINARY),
+	"CRC-32": ("\xBF", EET.BINARY),
+	"SignatureSlot": ("\x1B\x53\x86\x67", EET.MASTER),
+	"SignatureAlgo": ("\x7E\x8A", EET.UNSIGNED),
+	"SignatureHash": ("\x7E\x9A", EET.UNSIGNED),
+	"SignaturePublicKey": ("\x7E\xA5", EET.BINARY),
+	"Signature": ("\x7E\xB5", EET.BINARY),
+	"SignatureElements": ("\x7E\x5B", EET.MASTER),
+	"SignatureElementList": ("\x7E\x7B", EET.MASTER),
+	"SignedElement": ("\x65\x32", EET.BINARY),
+	"Segment": ("\x18\x53\x80\x67", EET.JUST_GO_ON),
+	"SeekHead": ("\x11\x4D\x9B\x74", EET.MASTER),
+	"Seek": ("\x4D\xBB", EET.MASTER),
+	"SeekID": ("\x53\xAB", EET.BINARY),
+	"SeekPosition": ("\x53\xAC", EET.UNSIGNED),
+	"Info": ("\x15\x49\xA9\x66", EET.MASTER),
+	"SegmentUID": ("\x73\xA4", EET.BINARY),
+	"SegmentFilename": ("\x73\x84", EET.TEXTU),
+	"PrevUID": ("\x3C\xB9\x23", EET.BINARY),
+	"PrevFilename": ("\x3C\x83\xAB", EET.TEXTU),
+	"NextUID": ("\x3E\xB9\x23", EET.BINARY),
+	"NextFilename": ("\x3E\x83\xBB", EET.TEXTU),
+	"SegmentFamily": ("\x44\x44", EET.BINARY),
+	"ChapterTranslate": ("\x69\x24", EET.MASTER),
+	"ChapterTranslateEditionUID": ("\x69\xFC", EET.UNSIGNED),
+	"ChapterTranslateCodec": ("\x69\xBF", EET.UNSIGNED),
+	"ChapterTranslateID": ("\x69\xA5", EET.BINARY),
+	"TimecodeScale": ("\x2A\xD7\xB1", EET.UNSIGNED),
+	"Duration": ("\x44\x89", EET.FLOAT),
+	"DateUTC": ("\x44\x61", EET.DATE),
+	"Title": ("\x7B\xA9", EET.TEXTU),
+	"MuxingApp": ("\x4D\x80", EET.TEXTU),
+	"WritingApp": ("\x57\x41", EET.TEXTU),
+	"Cluster": ("\x1F\x43\xB6\x75", EET.JUST_GO_ON),
+	"Timecode": ("\xE7", EET.UNSIGNED),
+	"SilentTracks": ("\x58\x54", EET.MASTER),
+	"SilentTrackNumber": ("\x58\xD7", EET.UNSIGNED),
+	"Position": ("\xA7", EET.UNSIGNED),
+	"PrevSize": ("\xAB", EET.UNSIGNED),
+	"SimpleBlock": ("\xA3", EET.BINARY),
+	"BlockGroup": ("\xA0", EET.MASTER),
+	"Block": ("\xA1", EET.BINARY),
+	"BlockVirtual": ("\xA2", EET.BINARY),
+	"BlockAdditions": ("\x75\xA1", EET.MASTER),
+	"BlockMore": ("\xA6", EET.MASTER),
+	"BlockAddID": ("\xEE", EET.UNSIGNED),
+	"BlockAdditional": ("\xA5", EET.BINARY),
+	"BlockDuration": ("\x9B", EET.UNSIGNED),
+	"ReferencePriority": ("\xFA", EET.UNSIGNED),
+	"ReferenceBlock": ("\xFB", EET.SIGNED),
+	"ReferenceVirtual": ("\xFD", EET.SIGNED),
+	"CodecState": ("\xA4", EET.BINARY),
+	"Slices": ("\x8E", EET.MASTER),
+	"TimeSlice": ("\xE8", EET.MASTER),
+	"LaceNumber": ("\xCC", EET.UNSIGNED),
+	"FrameNumber": ("\xCD", EET.UNSIGNED),
+	"BlockAdditionID": ("\xCB", EET.UNSIGNED),
+	"Delay": ("\xCE", EET.UNSIGNED),
+	"SliceDuration": ("\xCF", EET.UNSIGNED),
+	"ReferenceFrame": ("\xC8", EET.MASTER),
+	"ReferenceOffset": ("\xC9", EET.UNSIGNED),
+	"ReferenceTimeCode": ("\xCA", EET.UNSIGNED),
+	"EncryptedBlock": ("\xAF", EET.BINARY),
+	"Tracks": ("\x16\x54\xAE\x6B", EET.MASTER),
+	"TrackEntry": ("\xAE", EET.MASTER),
+	"TrackNumber": ("\xD7", EET.UNSIGNED),
+	"TrackUID": ("\x73\xC5", EET.UNSIGNED),
+	"TrackType": ("\x83", EET.UNSIGNED),
+	"FlagEnabled": ("\xB9", EET.UNSIGNED),
+	"FlagDefault": ("\x88", EET.UNSIGNED),
+	"FlagForced": ("\x55\xAA", EET.UNSIGNED),
+	"FlagLacing": ("\x9C", EET.UNSIGNED),
+	"MinCache": ("\x6D\xE7", EET.UNSIGNED),
+	"MaxCache": ("\x6D\xF8", EET.UNSIGNED),
+	"DefaultDuration": ("\x23\xE3\x83", EET.UNSIGNED),
+	"TrackTimecodeScale": ("\x23\x31\x4F", EET.FLOAT),
+	"TrackOffset": ("\x53\x7F", EET.SIGNED),
+	"MaxBlockAdditionID": ("\x55\xEE", EET.UNSIGNED),
+	"Name": ("\x53\x6E", EET.TEXTU),
+	"Language": ("\x22\xB5\x9C", EET.TEXTA),
+	"CodecID": ("\x86", EET.TEXTA),
+	"CodecPrivate": ("\x63\xA2", EET.BINARY),
+	"CodecName": ("\x25\x86\x88", EET.TEXTU),
+	"AttachmentLink": ("\x74\x46", EET.UNSIGNED),
+	"CodecSettings": ("\x3A\x96\x97", EET.TEXTU),
+	"CodecInfoURL": ("\x3B\x40\x40", EET.TEXTA),
+	"CodecDownloadURL": ("\x26\xB2\x40", EET.TEXTA),
+	"CodecDecodeAll": ("\xAA", EET.UNSIGNED),
+	"TrackOverlay": ("\x6F\xAB", EET.UNSIGNED),
+	"TrackTranslate": ("\x66\x24", EET.MASTER),
+	"TrackTranslateEditionUID": ("\x66\xFC", EET.UNSIGNED),
+	"TrackTranslateCodec": ("\x66\xBF", EET.UNSIGNED),
+	"TrackTranslateTrackID": ("\x66\xA5", EET.BINARY),
+	"Video": ("\xE0", EET.MASTER),
+	"FlagInterlaced": ("\x9A", EET.UNSIGNED),
+	"StereoMode": ("\x53\xB8", EET.UNSIGNED),
+	"OldStereoMode": ("\x53\xB9", EET.UNSIGNED),
+	"PixelWidth": ("\xB0", EET.UNSIGNED),
+	"PixelHeight": ("\xBA", EET.UNSIGNED),
+	"PixelCropBottom": ("\x54\xAA", EET.UNSIGNED),
+	"PixelCropTop": ("\x54\xBB", EET.UNSIGNED),
+	"PixelCropLeft": ("\x54\xCC", EET.UNSIGNED),
+	"PixelCropRight": ("\x54\xDD", EET.UNSIGNED),
+	"DisplayWidth": ("\x54\xB0", EET.UNSIGNED),
+	"DisplayHeight": ("\x54\xBA", EET.UNSIGNED),
+	"DisplayUnit": ("\x54\xB2", EET.UNSIGNED),
+	"AspectRatioType": ("\x54\xB3", EET.UNSIGNED),
+	"ColourSpace": ("\x2E\xB5\x24", EET.BINARY),
+	"GammaValue": ("\x2F\xB5\x23", EET.FLOAT),
+	"FrameRate": ("\x23\x83\xE3", EET.FLOAT),
+	"Audio": ("\xE1", EET.MASTER),
+	"SamplingFrequency": ("\xB5", EET.FLOAT),
+	"OutputSamplingFrequency": ("\x78\xB5", EET.FLOAT),
+	"Channels": ("\x9F", EET.UNSIGNED),
+	"ChannelPositions": ("\x7D\x7B", EET.BINARY),
+	"BitDepth": ("\x62\x64", EET.UNSIGNED),
+	"TrackOperation": ("\xE2", EET.MASTER),
+	"TrackCombinePlanes": ("\xE3", EET.MASTER),
+	"TrackPlane": ("\xE4", EET.MASTER),
+	"TrackPlaneUID": ("\xE5", EET.UNSIGNED),
+	"TrackPlaneType": ("\xE6", EET.UNSIGNED),
+	"TrackJoinBlocks": ("\xE9", EET.MASTER),
+	"TrackJoinUID": ("\xED", EET.UNSIGNED),
+	"TrickTrackUID": ("\xC0", EET.UNSIGNED),
+	"TrickTrackSegmentUID": ("\xC1", EET.BINARY),
+	"TrickTrackFlag": ("\xC6", EET.UNSIGNED),
+	"TrickMasterTrackUID": ("\xC7", EET.UNSIGNED),
+	"TrickMasterTrackSegmentUID": ("\xC4", EET.BINARY),
+	"ContentEncodings": ("\x6D\x80", EET.MASTER),
+	"ContentEncoding": ("\x62\x40", EET.MASTER),
+	"ContentEncodingOrder": ("\x50\x31", EET.UNSIGNED),
+	"ContentEncodingScope": ("\x50\x32", EET.UNSIGNED),
+	"ContentEncodingType": ("\x50\x33", EET.UNSIGNED),
+	"ContentCompression": ("\x50\x34", EET.MASTER),
+	"ContentCompAlgo": ("\x42\x54", EET.UNSIGNED),
+	"ContentCompSettings": ("\x42\x55", EET.BINARY),
+	"ContentEncryption": ("\x50\x35", EET.MASTER),
+	"ContentEncAlgo": ("\x47\xE1", EET.UNSIGNED),
+	"ContentEncKeyID": ("\x47\xE2", EET.BINARY),
+	"ContentSignature": ("\x47\xE3", EET.BINARY),
+	"ContentSigKeyID": ("\x47\xE4", EET.BINARY),
+	"ContentSigAlgo": ("\x47\xE5", EET.UNSIGNED),
+	"ContentSigHashAlgo": ("\x47\xE6", EET.UNSIGNED),
+	"Cues": ("\x1C\x53\xBB\x6B", EET.MASTER),
+	"CuePoint": ("\xBB", EET.MASTER),
+	"CueTime": ("\xB3", EET.UNSIGNED),
+	"CueTrackPositions": ("\xB7", EET.MASTER),
+	"CueTrack": ("\xF7", EET.UNSIGNED),
+	"CueClusterPosition": ("\xF1", EET.UNSIGNED),
+	"CueBlockNumber": ("\x53\x78", EET.UNSIGNED),
+	"CueCodecState": ("\xEA", EET.UNSIGNED),
+	"CueReference": ("\xDB", EET.MASTER),
+	"CueRefTime": ("\x96", EET.UNSIGNED),
+	"CueRefCluster": ("\x97", EET.UNSIGNED),
+	"CueRefNumber": ("\x53\x5F", EET.UNSIGNED),
+	"CueRefCodecState": ("\xEB", EET.UNSIGNED),
+	"Attachments": ("\x19\x41\xA4\x69", EET.MASTER),
+	"AttachedFile": ("\x61\xA7", EET.MASTER),
+	"FileDescription": ("\x46\x7E", EET.TEXTU),
+	"FileName": ("\x46\x6E", EET.TEXTU),
+	"FileMimeType": ("\x46\x60", EET.TEXTA),
+	"FileData": ("\x46\x5C", EET.BINARY),
+	"FileUID": ("\x46\xAE", EET.UNSIGNED),
+	"FileReferral": ("\x46\x75", EET.BINARY),
+	"FileUsedStartTime": ("\x46\x61", EET.UNSIGNED),
+	"FileUsedEndTime": ("\x46\x62", EET.UNSIGNED),
+	"Chapters": ("\x10\x43\xA7\x70", EET.MASTER),
+	"EditionEntry": ("\x45\xB9", EET.MASTER),
+	"EditionUID": ("\x45\xBC", EET.UNSIGNED),
+	"EditionFlagHidden": ("\x45\xBD", EET.UNSIGNED),
+	"EditionFlagDefault": ("\x45\xDB", EET.UNSIGNED),
+	"EditionFlagOrdered": ("\x45\xDD", EET.UNSIGNED),
+	"ChapterAtom": ("\xB6", EET.MASTER),
+	"ChapterUID": ("\x73\xC4", EET.UNSIGNED),
+	"ChapterTimeStart": ("\x91", EET.UNSIGNED),
+	"ChapterTimeEnd": ("\x92", EET.UNSIGNED),
+	"ChapterFlagHidden": ("\x98", EET.UNSIGNED),
+	"ChapterFlagEnabled": ("\x45\x98", EET.UNSIGNED),
+	"ChapterSegmentUID": ("\x6E\x67", EET.BINARY),
+	"ChapterSegmentEditionUID": ("\x6E\xBC", EET.UNSIGNED),
+	"ChapterPhysicalEquiv": ("\x63\xC3", EET.UNSIGNED),
+	"ChapterTrack": ("\x8F", EET.MASTER),
+	"ChapterTrackNumber": ("\x89", EET.UNSIGNED),
+	"ChapterDisplay": ("\x80", EET.MASTER),
+	"ChapString": ("\x85", EET.TEXTU),
+	"ChapLanguage": ("\x43\x7C", EET.TEXTA),
+	"ChapCountry": ("\x43\x7E", EET.TEXTA),
+	"ChapProcess": ("\x69\x44", EET.MASTER),
+	"ChapProcessCodecID": ("\x69\x55", EET.UNSIGNED),
+	"ChapProcessPrivate": ("\x45\x0D", EET.BINARY),
+	"ChapProcessCommand": ("\x69\x11", EET.MASTER),
+	"ChapProcessTime": ("\x69\x22", EET.UNSIGNED),
+	"ChapProcessData": ("\x69\x33", EET.BINARY),
+	"Tags": ("\x12\x54\xC3\x67", EET.MASTER),
+	"Tag": ("\x73\x73", EET.MASTER),
+	"Targets": ("\x63\xC0", EET.MASTER),
+	"TargetTypeValue": ("\x68\xCA", EET.UNSIGNED),
+	"TargetType": ("\x63\xCA", EET.TEXTA),
+	"TagTrackUID": ("\x63\xC5", EET.UNSIGNED),
+	"TagEditionUID": ("\x63\xC9", EET.UNSIGNED),
+	"TagChapterUID": ("\x63\xC4", EET.UNSIGNED),
+	"TagAttachmentUID": ("\x63\xC6", EET.UNSIGNED),
+	"SimpleTag": ("\x67\xC8", EET.MASTER),
+	"TagName": ("\x45\xA3", EET.TEXTU),
+	"TagLanguage": ("\x44\x7A", EET.TEXTA),
+	"TagDefault": ("\x44\x84", EET.UNSIGNED),
+	"TagString": ("\x44\x87", EET.TEXTU),
+	"TagBinary": ("\x44\x85", EET.BINARY),
+}
+
+class Xml2Mkv(handler.ContentHandler):
+
+    def __init__(self):
+        self.stack = []
+        self.bufstack = []
+        self.timecode_scale = 1000000;
+        pass
+
+    def startElement(self, name, attrs):
+        self.curname = name
+        if name == "mkv2xml":
+            pass
+        elif name == "Segment":
+            sys.stdout.write("\x18\x53\x80\x67"+"\xFF")
+            pass;
+        elif name == "Cluster" or name == "Timecode":
+            # We don't handle it yet, we just create Cluster for each Block/SimpleBlock
+            pass;
+        elif name == "track" or \
+             name == "duration" or \
+             name == "timecode":
+            pass
+        elif name == "data":
+            self.frame_text_content = False
+            if "encoding" in attrs:
+                if attrs["encoding"] == "text":
+                    self.frame_text_content = True
+
+
+        elif name == "discardable":
+            self.frame_discardable = True
+        elif name == "keyframe":
+            self.frame_keyframe = True
+        elif name == "invisible":
+            self.frame_invisible = True
+        elif name == "SimpleBlock" or \
+             name == "Block":
+            self.frame_discardable = False
+            self.frame_invisible = False
+            self.frame_keyframe = False
+            self.frame_curbuffer = ""
+            self.frame_buffers = []
+            self.frame_duration = None
+            self.curtype = None # prevent usual binary processing
+        else:
+            if name in element_types_names:
+                (id_, type_) = element_types_names[name]
+                self.curtype = type_
+                self.stack.append((name, attrs));
+                self.bufstack.append("")
+
+                if "encoding" in attrs:
+                    if attrs["encoding"] == "text":
+                        self.curtype = EET.TEXTA
+
+    def characters(self, content):
+        if self.curname == "data":
+            self.frame_curbuffer+=content    
+            return
+        if not content.isspace():
+            buf=""
+            if self.curname == "track":
+                self.frame_track = int(content)
+                return;
+            elif self.curname == "timecode":
+                self.frame_timecode = float(content)
+                return;
+            elif self.curname == "duration":
+                self.frame_duration = float(content)
+                return;
+            elif self.curname == "Timecode":
+                return
+
+            elif self.curtype == EET.TEXTA:
+                buf = str(content)
+            elif self.curtype == EET.TEXTU:
+                buf = str(content)
+            elif self.curtype == EET.UNSIGNED:
+                buf = big_endian_number(int(content))
+                if self.curname == "TimecodeScale":
+                    self.timecode_scale = int(content)
+            elif self.curtype == EET.SIGNED:
+                buf = big_endian_number(int(content), True)
+            elif self.curtype == EET.BINARY:
+                content = content.replace("\n","").replace("\r","").replace(" ","");
+                buf = content.decode("hex")
+                pass
+            elif self.curtype == EET.DATE:
+                d = float(content) # UNIX time
+                d-=978300000 # 2001-01-01T00:00:00,000000000
+                d*=1000000000.0;
+                buf = big_endian_number(int(d), True)
+            elif self.curtype == EET.FLOAT:
+                buf = pack(">d", float(content))
+                
+
+
+            self.bufstack[-1]+=buf
+
+    def endElement(self, name):
+        if name == "track" or \
+             name == "timecode" or \
+             name == "discardable" or \
+             name == "keyframe" or \
+             name == "invisible" or \
+             name == "duration": 
+            return
+        elif name == "data":
+            if self.frame_text_content:
+                self.frame_buffers.append(str(self.frame_curbuffer))
+            else:
+                text = self.frame_curbuffer.replace("\n", "").replace("\t", "").replace(" ", "")
+                self.frame_buffers.append(text.decode("hex"))
+            self.frame_curbuffer=""
+            return
+
+        if not name in element_types_names:
+            if not name == "mkv2xml":
+                sys.stderr.write("Unknown element %s\n"%name)
+            return
+
+        if name=="Segment":
+            return
+        elif name=="Cluster":
+            return
+        elif name=="Timecode":
+            return
+
+        (id_, type_) = element_types_names[name];
+
+        if name == "SimpleBlock" or name == "Block":
+            timecode = big_endian_number(int(self.frame_timecode * 1000000000 / self.timecode_scale))
+            flags = 0x02 # Xiph lacing
+            if self.frame_keyframe: flags|=0x80
+            if self.frame_discardable: flags|=0x01
+            if self.frame_invisible: flags|=0x08
+            xiph_lace_lengths=[]
+            content = ""
+            for i in self.frame_buffers:
+                content += i
+                xiph_lace_lengths.append(len(i))
+            xiph_lace=""
+            xiph_lace_count = len(xiph_lace_lengths)-1
+            for i in xrange(0,xiph_lace_count):
+                l = xiph_lace_lengths[i]
+                while l>=255:
+                    xiph_lace+="\xFF"
+                    l-=255
+                xiph_lace+=chr(l)
+            frame =  ebml_encode_number(self.frame_track) + "\x00\x00" + chr(flags) + chr(xiph_lace_count) + xiph_lace + content
+            block = "\xA3" + ebml_encode_number(len(frame)) + frame
+            timecode_el = "\xE7" + ebml_encode_number(len(timecode)) + timecode
+            cluster = "\x1F\x43\xB6\x75" + ebml_encode_number(len(timecode_el + block)) + timecode_el + block
+            sys.stdout.write(cluster)
+            return
+
+        if not len(self.stack):
+            return
+
+        (_, attrs) = self.stack.pop();
+        buf = self.bufstack.pop();
+
+        if name == "WritingApp" or name == "MuxingApp":
+            if buf.find("xml2mkv") == -1:
+                buf+="; xml2mkv"
+        if len(self.bufstack):
+            self.bufstack[-1] +=  id_ + ebml_encode_number(len(buf)) + buf;
+        else:
+            sys.stdout.write(id_)
+            sys.stdout.write(ebml_encode_number(len(buf)))
+            sys.stdout.write(buf)
+            pass
+
+
+            
+parser = make_parser()
+parser.setContentHandler(Xml2Mkv())
+parser.parse(sys.stdin)
