@@ -326,8 +326,18 @@ class Xml2Mkv(handler.ContentHandler):
         self.stack = []
         self.bufstack = []
         self.timecode_scale = 1000000
-        self.last_cluster_timecode = 0
+        self.naive_duration_editing_checker_duration = None
+        self.last_block_duration = 0
         pass
+
+    def naive_duration_editing_checker(self, duration):
+        if not self.naive_duration_editing_checker_duration:
+            self.naive_duration_editing_checker_duration = duration
+        else:
+            if duration != self.naive_duration_editing_checker_duration:
+                sys.stderr.write("Looks like you edited <duration>, but we are ignoring it\n")
+                sys.stderr.write("<duration> is meaningful in <block>s that are used in\n")
+                sys.stderr.write("\"nocluster\" mode (mkv2xml -C)\n")
 
     def startElement(self, name, attrs):
         self.curname = name
@@ -374,6 +384,8 @@ class Xml2Mkv(handler.ContentHandler):
                 self.frame_buffers = []
                 self.frame_duration = None
                 self.curtype = None # prevent usual binary processing
+            if name == "BlockGroup":
+                self.naive_duration_editing_checker_duration = None
 
     def characters(self, content):
         self.chacter_data.append(content);
@@ -404,6 +416,8 @@ class Xml2Mkv(handler.ContentHandler):
                     self.timecode_scale = int(content)
                 elif self.curname == "Timecode":
                     self.last_cluster_timecode = int(content)
+                elif self.curname == "BlockDuration":
+                    self.naive_duration_editing_checker(int(content))
             elif self.curtype == EET.SIGNED:
                 buf = big_endian_number(int(content), True)
             elif self.curtype == EET.BINARY:
@@ -463,9 +477,12 @@ class Xml2Mkv(handler.ContentHandler):
             relative_timecode = 0
             if name != "block":
                 relative_timecode = absolute_timecode - self.last_cluster_timecode
+                if self.frame_duration:
+                    scaled_duration = int(self.frame_duration * 1000000000 / self.timecode_scale)
+                    self.naive_duration_editing_checker(scaled_duration)
             if relative_timecode < -0x8000 or relative_timecode > 0x7FFF:
-                sys.stderr.write("Block timecode is too far from outer Cluster's timecode\n");
-                sys.stderr.write("Use no-cluster mode (mkv2xml -C) with <block> elements\n");
+                sys.stderr.write("Block timecode is too far from outer Cluster's timecode\n")
+                sys.stderr.write("Use no-cluster mode (mkv2xml -C) with <block> elements\n")
                 relative_timecode = 0;
             if relative_timecode<0:
                 relative_timecode+=0x10000
