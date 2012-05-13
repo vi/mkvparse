@@ -1,6 +1,18 @@
 #!/usr/bin/env python
 
-# Wait for complementary "xml2mkv"
+# This program generates XML file based on input matroska file
+# The file layout should mostly correspond to EBML elements layout in the input file 
+# (visible in "mkvinfo -v" output)
+# SimpleBlock and Block elements have special format: <track> subelement has track number, there can be additional subelements for flags, <timecode> subelement shows _absolute_ timecode of this block (based on containing Cluster timecode) in seconds. and one or more <data> elements (for laced frames) and optionally <duration> (which corresponts to containing BlockGroup's duration, in seconds. All other times (outside [Simple]Blocks) are just unscaled numbers.
+# By default some elements (which does refer positions inside the file, like Cues or SeekHeads) are stripped, "-v" option makes output everything verbatim
+# "-C" option also inhibits "<Cluster>" elements (and all containing things) and intead of "SimpleBlock" or "BlockGroup" produces just <block> (timecodes are absolute and duration is included, so we can reconstruct the most things back if needed).
+
+# Subtitles (CodecPrivate and blocks that corresponts to S_TEXT tracks) are retained as UTF-8 text (in CDATAs), other binary data is in hex.
+
+# mkvparse "flattens" Segments and Clusters, providing them as top-level elements (to simplify resyncing), so there are additional hacks to make output XML file look more like Matroska elemet tree.
+
+# 2012, Vitaly "_Vi" Shukela, License=MIT
+
 
 import mkvparse
 import sys

@@ -2,13 +2,36 @@
 
 # Read mkv2xml's output and convert it back to matroska file (not verbatim). License=MIT, 2012, Vitaly "_Vi" Shukela
 
+# There are special rules for "SimpleBlock"/"Block" and "block" elements:
+#   "SimpleBlock" / "Block" should be in corresponding <Cluster>s /  <BlockGroup>s respectively
+#       <duration> is ignored, <timecode> should be somewhere near Cluster's Timecode 
+#       (note that Cluster's Timecode and this timecode have different formats:
+#       <Timecode>560000</Timecode> is just copied verbatim to matroska file as number, but
+#       <timecode>0.56</timecode> is converted to nanoseconds, 
+#           scaled according to TimecodeScale and then stored into mkv.
+#   "block" should be in <Segment> and xml2mkv creates <Cluster> and/or <BlockGroup> automatically for them
+#       , using <duration> element.
+
+# <timecode>s in blocks are absolute, unlike in actual matroska files
+
+
+# Both
+#    cat somefile.mkv | ./mkv2xml | ./xml2mkv | mplayer -
+# and 
+#    cat somefile.mkv | ./mkv2xml -C | ./xml2mkv | mplayer -
+# should work.
+
+# You can edit mkv file on the fly with chain like 
+#    ./mkv2xml -C < somefile.mkv | xml2 | sed 's!duration=.*!duration=2!' | 2xml | ./xml2mkv | mplayer -
+        
+
 import sys
 
 from xml.sax import make_parser, handler
 from struct import pack
 
 reload(sys)
-sys.setdefaultencoding('utf-8')
+sys.setdefaultencoding('utf-8')   # hack to stop failing on Unicodish subtitles
 
 def big_endian_number(number, signed=False):
     if number<0:
