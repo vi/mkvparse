@@ -15,7 +15,7 @@ def chunks(s, n):
 
 
 class MatroskaToText(mkvparse.MatroskaHandler):
-    def __init__(self, banlist):
+    def __init__(self, banlist, nocluster_mode):
         self.there_was_segment=False
         self.there_was_cluster=False
         self.indent=0
@@ -25,6 +25,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         self.lb_data=[]
         self.lb_duration=None
         self.banlist=banlist
+        self.nocluster_mode = nocluster_mode
 
         self.text_tracks=frozenset([])
         self.going_to_be_textual_codec_private = False
@@ -65,6 +66,35 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         self.lb_invisible = invisible
         self.lb_discardable = discardable
 
+        if self.nocluster_mode:
+            print("<block>%s</block>" % self.format_block(""))            
+
+    def format_block(self, indent_):
+        newdata ="\n  "+indent_+"<track>%s</track>"%self.lb_track_id;
+        newdata+="\n  "+indent_+"<timecode>%s</timecode>"%self.lb_ts;
+        if self.lb_duration:
+            newdata+="\n  "+indent_+"<duration>%s</duration>"%self.lb_duration;
+        if self.lb_keyframe:     newdata+="\n  "+indent_+"<keyframe/>" 
+        if self.lb_invisible:    newdata+="\n  "+indent_+"<invisible/>"
+        if self.lb_discardable:  newdata+="\n  "+indent_+"<discardable/>"
+        for data_2 in self.lb_data:
+            if self.lb_track_id in self.text_tracks:
+                newdata+="\n  "+indent_+"<data encoding=\"text\"><![CDATA["
+                newdata+= data_2.replace("\x00","").replace("]]>", "]]]]><![CDATA[>")
+                newdata+="]]></data>";
+            else:
+                newdata+="\n  "+indent_+"<data>";
+                for chunk in chunks(data_2.encode("hex"), 64):
+                    newdata+="\n    "+indent_;
+                    newdata+=chunk;
+                newdata+="\n  "+indent_+"</data>";
+        newdata+="\n"+indent_;
+        self.lb_duration=None
+        self.lb_track_id=None
+        self.lb_ts=None
+        self.lb_data=[]
+        return newdata
+
     def printtree(self, list_, indent):
         indent_ = "  "*indent;
         for (name_, (type_, data_)) in list_:
@@ -95,31 +125,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                 continue;
             if type_ == mkvparse.EbmlElementType.BINARY:
                 if name_ == "SimpleBlock" or name_ == "Block":
-                    newdata ="\n  "+indent_+"<track>%s</track>"%self.lb_track_id;
-                    newdata+="\n  "+indent_+"<timecode>%s</timecode>"%self.lb_ts;
-                    if self.lb_duration:
-                        newdata+="\n  "+indent_+"<duration>%s</duration>"%self.lb_duration;
-                    if self.lb_keyframe:     newdata+="\n  "+indent_+"<keyframe/>" 
-                    if self.lb_invisible:    newdata+="\n  "+indent_+"<invisible/>"
-                    if self.lb_discardable:  newdata+="\n  "+indent_+"<discardable/>"
-                    for data_2 in self.lb_data:
-                        if self.lb_track_id in self.text_tracks:
-                            newdata+="\n  "+indent_+"<data encoding=\"text\"><![CDATA["
-                            newdata+= data_2.replace("\x00","").replace("]]>", "]]]]><![CDATA[>")
-                            newdata+="]]></data>";
-                        else:
-                            newdata+="\n  "+indent_+"<data>";
-                            for chunk in chunks(data_2.encode("hex"), 64):
-                                newdata+="\n    "+indent_;
-                                newdata+=chunk;
-                            newdata+="\n  "+indent_+"</data>";
-                    newdata+="\n"+indent_;
-                    data_=newdata
-
-                    self.lb_duration=None
-                    self.lb_track_id=None
-                    self.lb_ts=None
-                    self.lb_data=[]
+                    data_=self.format_block(indent_)
 
                 elif data_:
                     if name_ == "CodecPrivate" and self.going_to_be_textual_codec_private:
@@ -166,8 +172,15 @@ class MatroskaToText(mkvparse.MatroskaHandler):
 
 # Reads mkv input from stdin, parse it and print details to stdout
 banlist=["SeekHead", "CRC-32", "Void", "Cues", "PrevSize", "Position"]
-if len(sys.argv)>1 and sys.argv[1]=="-v":
-    banlist=[]
-mkvparse.mkvparse(sys.stdin, MatroskaToText(frozenset(banlist)))
+nocluster_mode = False
+if len(sys.argv)>1:
+    if sys.argv[1]=="-v":
+        banlist=[]
+    if sys.argv[1]=="-C":
+        nocluster_mode = True
+        banlist=["SeekHead", "CRC-32", "Void", "Cues", "PrevSize", "Position", "Cluster", "Timecode", "PrevSize", "EncryptedBlock", "BlockGroup", "SimpleBlock"]
+
+
+mkvparse.mkvparse(sys.stdin, MatroskaToText(frozenset(banlist), nocluster_mode))
 
 
