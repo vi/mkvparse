@@ -49,14 +49,14 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         self.lb_keyframe = False
         self.lb_invisible = False
         self.lb_discardable = False
-        print "<mkv2xml>"
+        print("<mkv2xml>")
 
     def __del__(self):
         if self.there_was_cluster:
-            print "</Cluster>"
+            print("</Cluster>")
         if self.there_was_segment:
-            print "</Segment>"
-        print "</mkv2xml>"
+            print("</Segment>")
+        print("</mkv2xml>")
 
     def tracks_available(self):
         text_tracks=[]
@@ -127,7 +127,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                 indent_=""
                 indent=0
                 self.indent=0
-                print "</Cluster>"
+                print("</Cluster>")
                 self.there_was_cluster=False
 
             if name_ == "TrackNumber":
