@@ -292,6 +292,11 @@ element_types_names = {
 	"TagBinary": ("\x44\x85", EET.BINARY),
 }
 
+def ebml_element(element_id, data, length=None):
+    if length==None:
+        length = len(data)
+    return big_endian_number(element_id) + ebml_encode_number(length) + data
+
 class Xml2Mkv(handler.ContentHandler):
 
     def __init__(self):
@@ -337,7 +342,8 @@ class Xml2Mkv(handler.ContentHandler):
                     if attrs["encoding"] == "text":
                         self.curtype = EET.TEXTA
             if name == "SimpleBlock" or \
-                 name == "Block":
+                 name == "Block" or \
+                 name == "block":
                 self.frame_discardable = False
                 self.frame_invisible = False
                 self.frame_keyframe = False
@@ -416,25 +422,30 @@ class Xml2Mkv(handler.ContentHandler):
             self.frame_curbuffer=""
             return
 
-        if not name in element_types_names:
-            if not name == "mkv2xml":
-                sys.stderr.write("Unknown element %s\n"%name)
-            return
+        if name != "block":
+            if not name in element_types_names:
+                if not name == "mkv2xml":
+                    sys.stderr.write("Unknown element %s\n"%name)
+                return
 
         if name=="Segment":
             return
 
-        (id_, type_) = element_types_names[name];
+        (id_, type_) = (None, None)
+        if name != "block":
+            (id_, type_) = element_types_names[name];
 
-        if name == "SimpleBlock" or name == "Block":
+        if name == "SimpleBlock" or name == "Block" or name == "block":
             absolute_timecode = int(self.frame_timecode * 1000000000 / self.timecode_scale)
-            relative_timecode = absolute_timecode - self.last_cluster_timecode
+            relative_timecode = 0
+            if name != "block":
+                relative_timecode = absolute_timecode - self.last_cluster_timecode
             if relative_timecode < -0x8000 or relative_timecode > 0x7FFF:
                 sys.stderr.write("Block timecode is too far from outer Cluster's timecode\n");
+                sys.stderr.write("Use no-cluster mode (mkv2xml -C) with <block> elements\n");
                 relative_timecode = 0;
             if relative_timecode<0:
                 relative_timecode+=0x10000
-            #timecode = big_endian_number()
             flags = 0x02 # Xiph lacing
             if self.frame_keyframe: flags|=0x80
             if self.frame_discardable: flags|=0x01
@@ -457,12 +468,23 @@ class Xml2Mkv(handler.ContentHandler):
                      chr(flags) + \
                      chr(xiph_lace_count) + xiph_lace + \
                      content
-            self.bufstack[-1] = frame
-            #block = id_ + ebml_encode_number(len(frame)) + frame
-            #timecode_el = "\xE7" + ebml_encode_number(len(timecode)) + timecode
-            #cluster = "\x1F\x43\xB6\x75" + ebml_encode_number(len(timecode_el + block)) + timecode_el + block
-            #sys.stdout.write(cluster)
-            #return
+
+            if name == "block":
+                if not self.frame_duration:
+                    cluster =  ebml_element(0x1F43B675, "" # Cluster
+                        + ebml_element(0xE7, big_endian_number(absolute_timecode)) # Timecode
+                        + ebml_element(0xA3, frame)) # SimpleBlock
+                else:
+                    scaled_duration = int(self.frame_duration * 1000000000 / self.timecode_scale)
+                    cluster =  ebml_element(0x1F43B675, "" # Cluster
+                        + ebml_element(0xE7, big_endian_number(absolute_timecode)) # Timecode
+                        + ebml_element(0xA0, "" # BlockGroup
+                            + ebml_element(0x9B, ben(scaled_duration))  # BlockDuration
+                            + ebml_element(0xA1, frame))) # Block
+                sys.stdout.write(cluster)
+                return
+            else:
+                self.bufstack[-1] = frame
 
         if not len(self.stack):
             return
