@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import mkvparse
 import sys
+import binascii
 
 class MatroskaUser(mkvparse.MatroskaHandler):
     def tracks_available(self):
@@ -12,7 +13,7 @@ class MatroskaUser(mkvparse.MatroskaHandler):
     def segment_info_available(self):
         print("Segment info:")
         for (k,(t_,v)) in self.segment_info:
-            if t_ == mkvparse.EbmlElementType.BINARY: v=v.encode("hex")
+            if t_ == mkvparse.EbmlElementType.BINARY: v = binascii.hexlify(v)
             print("    %s: %s"%(k,v))
 
     def frame(self, track_id, timestamp, data, more_laced_frames, duration, keyframe, invisible, discardable):
@@ -23,8 +24,10 @@ class MatroskaUser(mkvparse.MatroskaHandler):
         if invisible: addstr+=" invis"
         if discardable: addstr+=" disc"
         print("Frame for %d ts=%.06f l=%d %s len=%d data=%s..." %
-                (track_id, timestamp, more_laced_frames, addstr, len(data), data[0:10].encode("hex")))
+                (track_id, timestamp, more_laced_frames, addstr, len(data), binascii.hexlify(data[0:10])))
 
+if sys.version >= '3':
+    sys.stdin = sys.stdin.detach()
 
 # Reads mkv input from stdin, parse it and print details to stdout
 mkvparse.mkvparse(sys.stdin, MatroskaUser())

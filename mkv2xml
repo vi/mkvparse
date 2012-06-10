@@ -17,8 +17,18 @@
 import mkvparse
 import sys
 import re
+import binascii
 
 from xml.sax import saxutils
+
+
+if sys.version < '3':
+    reload(sys)
+    sys.setdefaultencoding('utf-8')   # hack to stop failing on Unicodish subtitles
+    range=xrange
+    maybe_decode=lambda x:x
+else:
+    maybe_decode=lambda x:x.decode("ascii")
 
 def chunks(s, n):
     """Produce `n`-character chunks from `s`."""
@@ -91,12 +101,13 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         if self.lb_discardable:  newdata+="\n  "+indent_+"<discardable/>"
         for data_2 in self.lb_data:
             if self.lb_track_id in self.text_tracks:
+                data_2 = data_2.decode("UTF-8")
                 newdata+="\n  "+indent_+"<data encoding=\"text\"><![CDATA["
                 newdata+= data_2.replace("\x00","").replace("]]>", "]]]]><![CDATA[>")
                 newdata+="]]></data>";
             else:
                 newdata+="\n  "+indent_+"<data>";
-                for chunk in chunks(data_2.encode("hex"), 64):
+                for chunk in chunks(maybe_decode(binascii.hexlify(data_2)), 64):
                     newdata+="\n    "+indent_;
                     newdata+=chunk;
                 newdata+="\n  "+indent_+"</data>";
@@ -141,11 +152,12 @@ class MatroskaToText(mkvparse.MatroskaHandler):
 
                 elif data_:
                     if name_ == "CodecPrivate" and self.going_to_be_textual_codec_private:
+                        data_ = data_.decode("UTF-8")
                         data_ = data_.replace("]]>", "]]]]><![CDATA[>")
                         data_ = "<![CDATA[" + data_ + "]]>"
                         opening_tag_content = "CodecPrivate encoding=\"text\""
                     else:
-                        data_ = data_.encode("hex")
+                        data_ = maybe_decode(binascii.hexlify(data_))
                         if len(data_) > 40:
                             newdata=""
                             for chunk in chunks(data_, 64):
@@ -192,6 +204,8 @@ if len(sys.argv)>1:
         nocluster_mode = True
         banlist=["SeekHead", "CRC-32", "Void", "Cues", "PrevSize", "Position", "Cluster", "Timecode", "PrevSize", "EncryptedBlock", "BlockGroup", "SimpleBlock"]
 
+if sys.version >= '3':
+    sys.stdin = sys.stdin.detach()
 
 mkvparse.mkvparse(sys.stdin, MatroskaToText(frozenset(banlist), nocluster_mode))
 

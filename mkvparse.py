@@ -11,7 +11,17 @@
 import traceback
 from struct import unpack
 
-import sys # for stderr
+import sys
+
+if sys.version < '3':
+    range=xrange
+else:
+    #identity=lambda x:x
+    def ord(something):
+        if type(something)==bytes:
+            return something[0]
+        else:
+            return something
 
 def get_major_bit_number(n):
     '''
@@ -133,7 +143,7 @@ def parse_fixedlength_number(data, pos, length, signed=False):
         "\xFF\x04" signed -> (-0x00FC,  pos+2)
     '''
     r=0
-    for i in xrange(length):
+    for i in range(length):
         r=r*0x100+ord(data[pos+i])
     if signed:
         if ord(data[pos]) & 0x80:
@@ -406,10 +416,12 @@ def read_simple_element(f, type, size):
         data=read_fixedlength_number(f, size, True)
     elif type==EET.TEXTA:
         data=f.read(size)
-        data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
+        data = data.replace(b"\x00", b"")  # filter out \0, for gstreamer
+        data = data.decode("ascii")
     elif type==EET.TEXTU:
         data=f.read(size)
-        data = filter(lambda x: x!="\x00", data) # filter out \0, for gstreamer
+        data = data.replace(b"\x00", b"")  # filter out \0, for gstreamer
+        data = data.decode("UTF-8")
     elif type==EET.MASTER:
         data=read_ebml_element_tree(f, size)
     elif type==EET.DATE:
@@ -499,7 +511,7 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
 
     if laceflags == 0x02: # Xiph lacing
         accumlength=0
-        for i in xrange(numframes-1):
+        for i in range(numframes-1):
             (l, pos) = parse_xiph_number(buffer, pos)
             lengths.append(l)
             accumlength+=l
@@ -510,15 +522,15 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
             (flength, pos) = parse_matroska_number(buffer, pos, signed=False)
             lengths.append(flength)
             accumlength+=flength
-        for i in xrange(numframes-2):
+        for i in range(numframes-2):
             (l, pos) = parse_matroska_number(buffer, pos, signed=True)
             flength+=l
             lengths.append(flength)
             accumlength+=flength
         lengths.append(len(buffer)-pos-accumlength)
     elif laceflags==0x04: # Fixed size lacing
-        fl=(len(buffer)-pos)/numframes
-        for i in xrange(numframes):
+        fl=int((len(buffer)-pos)/numframes)
+        for i in range(numframes):
             lengths.append(fl)
 
     more_laced_frames=numframes-1
