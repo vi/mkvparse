@@ -537,7 +537,7 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
     for i in lengths:
         buf = buffer[pos:pos+i]
         pos+=i
-        handler.frame(tracknum, block_timecode, buf, more_laced_frames, None, f_keyframe, f_invisible, f_discardable)
+        handler.frame(tracknum, block_timecode, buf, more_laced_frames, duration, f_keyframe, f_invisible, f_discardable)
         more_laced_frames-=1
 
 
