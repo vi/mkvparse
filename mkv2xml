@@ -100,12 +100,17 @@ class MatroskaToText(mkvparse.MatroskaHandler):
         if self.lb_invisible:    newdata+="\n  "+indent_+"<invisible/>"
         if self.lb_discardable:  newdata+="\n  "+indent_+"<discardable/>"
         for data_2 in self.lb_data:
+            decoded_as_text = False
             if self.lb_track_id in self.text_tracks:
-                data_2 = data_2.decode("UTF-8")
-                newdata+="\n  "+indent_+"<data encoding=\"text\"><![CDATA["
-                newdata+= data_2.replace("\x00","").replace("]]>", "]]]]><![CDATA[>")
-                newdata+="]]></data>";
-            else:
+                try:
+                    data_2 = data_2.decode("UTF-8")
+                    newdata+="\n  "+indent_+"<data encoding=\"text\"><![CDATA["
+                    newdata+= data_2.replace("\x00","").replace("]]>", "]]]]><![CDATA[>")
+                    newdata+="]]></data>"
+                    decoded_as_text = True
+                except UnicodeDecodeError:
+                    sys.stderr.write("UTF-8, decoding error leaving as binary\n")
+            if not decoded_as_text:
                 newdata+="\n  "+indent_+"<data>";
                 for chunk in chunks(maybe_decode(binascii.hexlify(data_2)), 64):
                     newdata+="\n    "+indent_;
@@ -151,12 +156,17 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                     data_=self.format_block(indent_)
 
                 elif data_:
+                    encoded_as_text = False
                     if name_ == "CodecPrivate" and self.going_to_be_textual_codec_private:
-                        data_ = data_.decode("UTF-8")
-                        data_ = data_.replace("]]>", "]]]]><![CDATA[>")
-                        data_ = "<![CDATA[" + data_ + "]]>"
-                        opening_tag_content = "CodecPrivate encoding=\"text\""
-                    else:
+                        try:
+                            data_ = data_.decode("UTF-8")
+                            data_ = data_.replace("]]>", "]]]]><![CDATA[>")
+                            data_ = "<![CDATA[" + data_ + "]]>"
+                            opening_tag_content = "CodecPrivate encoding=\"text\""
+                            encoded_as_text = True
+                        except UnicodeDecodeError:
+                            sys.stderr.write("UTF-8, decoding error leaving as binary\n")
+                    if not encoded_as_text:
                         data_ = maybe_decode(binascii.hexlify(data_))
                         if len(data_) > 40:
                             newdata=""
