@@ -18,6 +18,7 @@ import mkvparse
 import sys
 import re
 import binascii
+from os import getenv
 
 from xml.sax import saxutils
 
@@ -30,8 +31,15 @@ if sys.version < '3':
 else:
     maybe_decode=lambda x:x.decode("ascii")
 
+
+chunklength = 64
+
+
 def chunks(s, n):
     """Produce `n`-character chunks from `s`."""
+    if not n:
+       yield s
+       return
     for start in range(0, len(s), n):
         yield s[start:start+n]
 
@@ -112,7 +120,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                     sys.stderr.write("UTF-8 decoding error, leaving as binary\n")
             if not decoded_as_text:
                 newdata+="\n  "+indent_+"<data>";
-                for chunk in chunks(maybe_decode(binascii.hexlify(data_2)), 64):
+                for chunk in chunks(maybe_decode(binascii.hexlify(data_2)), chunklength):
                     newdata+="\n    "+indent_;
                     newdata+=chunk;
                 newdata+="\n  "+indent_+"</data>";
@@ -170,7 +178,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
                         data_ = maybe_decode(binascii.hexlify(data_))
                         if len(data_) > 40:
                             newdata=""
-                            for chunk in chunks(data_, 64):
+                            for chunk in chunks(data_, chunklength):
                                 newdata+="\n  "+indent_;
                                 newdata+=chunk;
                             newdata+="\n"+indent_;
@@ -213,6 +221,8 @@ if len(sys.argv)>1:
     if sys.argv[1]=="-C":
         nocluster_mode = True
         banlist=["SeekHead", "CRC-32", "Void", "Cues", "PrevSize", "Position", "Cluster", "Timecode", "PrevSize", "EncryptedBlock", "BlockGroup", "SimpleBlock"]
+
+chunklength = int(getenv("CHUNKLENGTH", "64"))
 
 if sys.version >= '3':
     sys.stdin = sys.stdin.detach()
