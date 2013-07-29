@@ -341,6 +341,10 @@ class Xml2Mkv(handler.ContentHandler):
         self.timecode_scale = 1000000
         self.naive_duration_editing_checker_duration = None
         self.last_block_duration = 0
+        self.header_removal_compression = {} # track number -> buffer
+        self.tracks_current_track = None
+        self.tracks_current_ContentCompAlgo = None
+        self.tracks_current_ContentCompSettings = None
         pass
 
     def naive_duration_editing_checker(self, duration):
@@ -477,6 +481,20 @@ class Xml2Mkv(handler.ContentHandler):
                     sys.stderr.write("Unknown element %s\n"%name)
                 return
 
+        if name=="TrackEntry":
+            if self.tracks_current_ContentCompAlgo == 3:
+                self.header_removal_compression[self.tracks_current_track] = \
+                        binascii.unhexlify(maybe_encode(self.tracks_current_ContentCompSettings))
+                self.tracks_current_ContentCompSettings = None
+                self.tracks_current_ContentCompAlgo = None
+                sys.stderr.write("Using header compression for track "+str(self.tracks_current_track)+"\n");
+        if name=="TrackNumber":
+            self.tracks_current_track = int(content)
+        if name=="ContentCompAlgo":
+            self.tracks_current_ContentCompAlgo = int(content)
+        if name=="ContentCompSettings":
+            self.tracks_current_ContentCompSettings = content
+
         if name=="Segment":
             return
 
@@ -504,7 +522,17 @@ class Xml2Mkv(handler.ContentHandler):
             if self.frame_invisible: flags|=0x08
             xiph_lace_lengths=[]
             content = b""
+            
+            header = None
+            if self.frame_track in self.header_removal_compression:
+                header = self.header_removal_compression[self.frame_track]
             for i in self.frame_buffers:
+                if header is not None:
+                    # apply header removal compression
+                    if i[0:len(header)] != header:
+                        sys.stderr.write("Unable to apply header compression here\n")
+                    else:
+                        i=i[len(header):]
                 content += i
                 xiph_lace_lengths.append(len(i))
             xiph_lace=b""
