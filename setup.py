@@ -21,7 +21,7 @@ setup(
 	package_dir={'mkvparse': ''},
     long_description=read('README.md'),
     classifiers=[
-        "Development Status :: 5 - Production/Stable",
+        "Development Status :: 4 - Beta",
         "Topic :: Multimedia",
         "License :: OSI Approved :: MIT License",
     ],
