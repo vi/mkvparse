@@ -484,7 +484,7 @@ class MatroskaHandler:
     def ebml_top_element(self, id_, name_, type_, data_):
         pass
 
-def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, duration=None):
+def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, duration=None, header_removal_headers_for_tracks={}):
     '''
         Decode a block, handling all lacings, send it to handler with appropriate timestamp, track number
     '''
@@ -499,9 +499,14 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
 
     block_timecode = (cluster_timecode + tcode)*(timecode_scale*0.000000001)
 
+    header_removal_prefix = ""
+    if tracknum in header_removal_headers_for_tracks:
+        header_removal_prefix = header_removal_headers_for_tracks[tracknum]
+    
+
     if laceflags == 0x00: # no lacing
         buf = buffer[pos:]
-        handler.frame(tracknum, block_timecode, buf, 0, duration, f_keyframe, f_invisible, f_discardable)
+        handler.frame(tracknum, block_timecode, header_removal_prefix+buf, 0, duration, f_keyframe, f_invisible, f_discardable)
         return
     
     numframes = ord(buffer[pos]); pos+=1
@@ -537,7 +542,7 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
     for i in lengths:
         buf = buffer[pos:pos+i]
         pos+=i
-        handler.frame(tracknum, block_timecode, buf, more_laced_frames, duration, f_keyframe, f_invisible, f_discardable)
+        handler.frame(tracknum, block_timecode, header_removal_prefix+buf, more_laced_frames, duration, f_keyframe, f_invisible, f_discardable)
         more_laced_frames-=1
 
 
@@ -574,6 +579,7 @@ def mkvparse(f, handler):
     current_cluster_timecode = 0
     resync_element_id = None
     resync_element_size = None
+    header_removal_headers_for_tracks = {}
     while f:
         (id_, size, hsize) = (None, None, None)
         tree = None
@@ -646,6 +652,17 @@ def mkvparse(f, handler):
                 elif tt==0x20: d['type']='control'
                 if 'TrackTimecodeScale' in d:
                     sys.stderr.write("mkvparse: Warning: TrackTimecodeScale is not supported\n")
+                if 'ContentEncodings' in d:
+                    try:
+                        compr = dict(d["ContentEncodings"][1][0][1][1][0][1][1])
+                        if compr["ContentCompAlgo"][1] == 3:
+                            header_removal_headers_for_tracks[n] = compr["ContentCompSettings"][1]
+                        else:
+                            sys.stderr.write("mkvparse: Warning: compression other than " \
+                                "header removal is not supported\n")
+                    except:
+                        sys.stderr.write("mkvparse: Warning: unsuccessfully tried " \
+                                "to handle header removal compression\n")
             handler.tracks_available()
         # cluster contents:
         elif name=="Timecode":
@@ -653,7 +670,7 @@ def mkvparse(f, handler):
             current_cluster_timecode = data;
         elif name=="SimpleBlock":
             data=f.read(size)
-            handle_block(data, handler, current_cluster_timecode, timecode_scale)
+            handle_block(data, handler, current_cluster_timecode, timecode_scale, None,  header_removal_headers_for_tracks)
         elif name=="BlockGroup":
             d2 = dict(tree)
             duration=None
@@ -661,7 +678,7 @@ def mkvparse(f, handler):
                 duration = d2['BlockDuration'][1]
                 duration = duration*0.000000001*timecode_scale
             if 'Block' in d2:
-                handle_block(d2['Block'][1], handler, current_cluster_timecode, timecode_scale, duration)
+                handle_block(d2['Block'][1], handler, current_cluster_timecode, timecode_scale, duration, header_removal_headers_for_tracks)
         else:
             if type!=EET.JUST_GO_ON and type!=EET.MASTER:
                 data = read_simple_element(f, type, size)
