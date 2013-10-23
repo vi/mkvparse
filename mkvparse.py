@@ -50,7 +50,7 @@ def read_matroska_number(f, unmodified=False, signed=False):
     if unmodified and signed:
         raise Exception("Contradictary arguments")
     first_byte=f.read(1)
-    if(first_byte==""):
+    if(len(first_byte)==0):
         raise StopIteration
     r = ord(first_byte)
     (n,r2) = get_major_bit_number(r)
@@ -506,7 +506,7 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
 
     if laceflags == 0x00: # no lacing
         buf = buffer[pos:]
-        handler.frame(tracknum, block_timecode, header_removal_prefix+buf, 0, duration, f_keyframe, f_invisible, f_discardable)
+        handler.frame(tracknum, block_timecode, header_removal_prefix.encode("ascii")+buf, 0, duration, f_keyframe, f_invisible, f_discardable)
         return
     
     numframes = ord(buffer[pos]); pos+=1
@@ -542,7 +542,7 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
     for i in lengths:
         buf = buffer[pos:pos+i]
         pos+=i
-        handler.frame(tracknum, block_timecode, header_removal_prefix+buf, more_laced_frames, duration, f_keyframe, f_invisible, f_discardable)
+        handler.frame(tracknum, block_timecode, header_removal_prefix.encode("ascii")+buf, more_laced_frames, duration, f_keyframe, f_invisible, f_discardable)
         more_laced_frames-=1
 
 
@@ -550,7 +550,7 @@ def resync(f):
     sys.stderr.write("mvkparse: Resyncing\n")
     while True:
         b = f.read(1);
-        if b == "": return (None, None);
+        if len(b) == 0: return (None, None);
         if b == "\x1F":
             b2 = f.read(3);
             if b2 == "\x43\xB6\x75":
