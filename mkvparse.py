@@ -19,6 +19,8 @@ else:
     #identity=lambda x:x
     def ord(something):
         if type(something)==bytes:
+            if something == b"":
+                raise StopIteration
             return something[0]
         else:
             return something
@@ -499,7 +501,7 @@ def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, dura
 
     block_timecode = (cluster_timecode + tcode)*(timecode_scale*0.000000001)
 
-    header_removal_prefix = ""
+    header_removal_prefix = b""
     if tracknum in header_removal_headers_for_tracks:
         header_removal_prefix = header_removal_headers_for_tracks[tracknum]
     
@@ -550,20 +552,20 @@ def resync(f):
     sys.stderr.write("mvkparse: Resyncing\n")
     while True:
         b = f.read(1);
-        if b == "": return (None, None);
-        if b == "\x1F":
+        if b == b"": return (None, None);
+        if b == b"\x1F":
             b2 = f.read(3);
-            if b2 == "\x43\xB6\x75":
+            if b2 == b"\x43\xB6\x75":
                 (seglen, x) = read_matroska_number(f)
                 return (0x1F43B675, seglen) # cluster
-        if b == "\x18":
+        if b == b"\x18":
             b2 = f.read(3)
-            if b2 == "\x53\x80\x67":
+            if b2 == b"\x53\x80\x67":
                 (seglen, x) = read_matroska_number(f)
                 return (0x18538067, seglen) # segment
-        if b == "\x16":
+        if b == b"\x16":
             b2 = f.read(3)
-            if b2 == "\x54\xAE\x6B":
+            if b2 == b"\x54\xAE\x6B":
                 (seglen ,x )= read_matroska_number(f)
                 return (0x1654AE6B, seglen) # tracks
                 
