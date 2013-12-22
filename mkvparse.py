@@ -45,7 +45,7 @@ def get_major_bit_number(n):
 def read_matroska_number(f, unmodified=False, signed=False):
     '''
         Read ebml number. Unmodified means don't clear the length bit (as in Element IDs)
-        Returns the number plus it's length
+        Returns the number and it's length as a tuple
 
         See examples in "parse_matroska_number" function
     '''
@@ -407,31 +407,31 @@ element_types_names = {
 	0x4485: (EET.BINARY, "TagBinary"),
 }
 
-def read_simple_element(f, type, size):
+def read_simple_element(f, type_, size):
     date = None
     if size==0:
         return ""
 
-    if type==EET.UNSIGNED:
+    if type_==EET.UNSIGNED:
         data=read_fixedlength_number(f, size, False)
-    elif type==EET.SIGNED:
+    elif type_==EET.SIGNED:
         data=read_fixedlength_number(f, size, True)
-    elif type==EET.TEXTA:
+    elif type_==EET.TEXTA:
         data=f.read(size)
         data = data.replace(b"\x00", b"")  # filter out \0, for gstreamer
         data = data.decode("ascii")
-    elif type==EET.TEXTU:
+    elif type_==EET.TEXTU:
         data=f.read(size)
         data = data.replace(b"\x00", b"")  # filter out \0, for gstreamer
         data = data.decode("UTF-8")
-    elif type==EET.MASTER:
+    elif type_==EET.MASTER:
         data=read_ebml_element_tree(f, size)
-    elif type==EET.DATE:
+    elif type_==EET.DATE:
         data=read_fixedlength_number(f, size, True)
         data/=1000000000.0;
         data+=978300000 # 2001-01-01T00:00:00,000000000
         # now should be UNIX date
-    elif type==EET.FLOAT:
+    elif type_==EET.FLOAT:
         if size==4:
             data = f.read(4)
             data = unpack(">f", data)[0]
@@ -465,13 +465,13 @@ def read_ebml_element_tree(f, total_size):
             sys.stderr.write("mkvparse: Element %x with size %d? Damaged data? Skipping %d bytes\n" % (id_, size, total_size))
             f.read(total_size);
             break
-        type = EET.BINARY
+        type_ = EET.BINARY
         name = "unknown_%x"%id_
         if id_ in element_types_names:
-            (type, name) = element_types_names[id_]
-        data = read_simple_element(f, type, size)
+            (type_, name) = element_types_names[id_]
+        data = read_simple_element(f, type_, size)
         total_size-=(size+hsize)
-        childs.append((name, (type, data))) 
+        childs.append((name, (type_, data))) 
     return childs
                 
 
@@ -586,7 +586,7 @@ def mkvparse(f, handler):
         (id_, size, hsize) = (None, None, None)
         tree = None
         data = None
-        (type, name) = (None, None)
+        (type_, name) = (None, None)
         try:
             if not resync_element_id:
                 try:
@@ -606,12 +606,12 @@ def mkvparse(f, handler):
                 resync_element_id = None
                 resync_element_size = None
 
-            (type, name) = element_types_names[id_]
+            (type_, name) = element_types_names[id_]
 
-            if type==EET.MASTER:
+            if type_==EET.MASTER:
                 tree = read_ebml_element_tree(f, size)
                 data = tree
-            elif type==EET.JUST_GO_ON:
+            elif type_==EET.JUST_GO_ON:
                 pass
         except Exception:
             traceback.print_exc()
@@ -682,10 +682,10 @@ def mkvparse(f, handler):
             if 'Block' in d2:
                 handle_block(d2['Block'][1], handler, current_cluster_timecode, timecode_scale, duration, header_removal_headers_for_tracks)
         else:
-            if type!=EET.JUST_GO_ON and type!=EET.MASTER:
-                data = read_simple_element(f, type, size)
+            if type_!=EET.JUST_GO_ON and type_!=EET.MASTER:
+                data = read_simple_element(f, type_, size)
 
-        handler.ebml_top_element(id_, name, type, data);
+        handler.ebml_top_element(id_, name, type_, data);
 
 
 
