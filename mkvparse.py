@@ -486,6 +486,16 @@ class MatroskaHandler:
         pass
     def ebml_top_element(self, id_, name_, type_, data_):
         pass
+    def before_handling_an_element(self):
+        pass
+    def begin_handling_ebml_element(self, id_, name, type_, headersize, datasize):
+        if type_==EET.MASTER:
+            return 'read tree'
+        elif type_==EET.JUST_GO_ON:
+            return 'pass'
+        return 'pass'
+    def element_data_available(self, id_, name, type_, headersize, data):
+        pass
 
 def handle_block(buffer, handler, cluster_timecode, timecode_scale=1000000, duration=None, header_removal_headers_for_tracks={}):
     '''
@@ -558,17 +568,17 @@ def resync(f):
             b2 = f.read(3);
             if b2 == b"\x43\xB6\x75":
                 (seglen, x) = read_matroska_number(f)
-                return (0x1F43B675, seglen) # cluster
+                return (0x1F43B675, seglen, x+4) # cluster
         if b == b"\x18":
             b2 = f.read(3)
             if b2 == b"\x53\x80\x67":
                 (seglen, x) = read_matroska_number(f)
-                return (0x18538067, seglen) # segment
+                return (0x18538067, seglen, x+4) # segment
         if b == b"\x16":
             b2 = f.read(3)
             if b2 == b"\x54\xAE\x6B":
                 (seglen ,x )= read_matroska_number(f)
-                return (0x1654AE6B, seglen) # tracks
+                return (0x1654AE6B, seglen, x+4) # tracks
                 
                 
     
@@ -582,21 +592,24 @@ def mkvparse(f, handler):
     current_cluster_timecode = 0
     resync_element_id = None
     resync_element_size = None
+    resync_element_headersize = None
     header_removal_headers_for_tracks = {}
     while f:
         (id_, size, hsize) = (None, None, None)
         tree = None
         data = None
+        what_to_do = None
         (type_, name) = (None, None)
         try:
             if not resync_element_id:
                 try:
+                    handler.before_handling_an_element()
                     (id_, size, hsize) = read_ebml_element_header(f)
                 except StopIteration:
                     break;
                 if not (id_ in element_types_names): 
                     sys.stderr.write("mkvparse: Unknown element with id %x and size %d\n"%(id_, size))
-                    (resync_element_id, resync_element_size) = resync(f)
+                    (resync_element_id, resync_element_size, resync_element_headersize) = resync(f)
                     if resync_element_id:
                         continue;
                     else:
@@ -604,25 +617,36 @@ def mkvparse(f, handler):
             else: 
                 id_ = resync_element_id
                 size=resync_element_size
+                hsize=resync_element_headersize
                 resync_element_id = None
                 resync_element_size = None
+                resync_element_headersize = None
 
             (type_, name) = element_types_names[id_]
+            (type_, name) = element_types_names[id_]
+            what_to_do =  handler.begin_handling_ebml_element(id_, name, type_, hsize, size)
 
-            if type_==EET.MASTER:
+            if what_to_do=='pass':
+                pass
+            elif what_to_do=='read tree':
                 tree = read_ebml_element_tree(f, size)
                 data = tree
             elif type_==EET.JUST_GO_ON:
                 pass
+            elif what_to_do=='read blob':
+                data = f.read(size)
+
         except Exception:
             traceback.print_exc()
-            (resync_element_id, resync_element_size) = resync(f)
+            handler.before_handling_an_element()
+            (resync_element_id, resync_element_size, resync_element_headersize) = resync(f)
             if resync_element_id:
                 continue;
             else:
                 break;
+        handler.element_data_available(id_, name, type_, hsize, data)
         
-        if name=="EBML":
+        if name=="EBML" and type(data) == list:
             d = dict(tree)
             if 'EBMLReadVersion' in d:
                 if d['EBMLReadVersion'][1]>1: sys.stderr.write("mkvparse: Warning: EBMLReadVersion too big\n")
@@ -631,14 +655,14 @@ def mkvparse(f, handler):
             dt = d['DocType'][1]
             if dt != "matroska" and dt != "webm": 
                 sys.stderr.write("mkvparse: Warning: EBML DocType is not \"matroska\" or \"webm\"")
-        elif name=="Info":
+        elif name=="Info" and type(data) == list:
             handler.segment_info = tree
             handler.segment_info_available()
             
             d = dict(tree)
             if "TimecodeScale" in d:
                 timecode_scale = d["TimecodeScale"][1]
-        elif name=="Tracks":
+        elif name=="Tracks" and type(data) == list:
             handler.tracks={}
             for (ten, (_t, track)) in tree:
                 if ten != "TrackEntry": continue
@@ -668,13 +692,13 @@ def mkvparse(f, handler):
                                 "to handle header removal compression\n")
             handler.tracks_available()
         # cluster contents:
-        elif name=="Timecode":
+        elif name=="Timecode" and what_to_do == 'pass':
             data=read_fixedlength_number(f, size, False)
             current_cluster_timecode = data;
-        elif name=="SimpleBlock":
+        elif name=="SimpleBlock" and what_to_do == 'pass':
             data=f.read(size)
             handle_block(data, handler, current_cluster_timecode, timecode_scale, None,  header_removal_headers_for_tracks)
-        elif name=="BlockGroup":
+        elif name=="BlockGroup" and what_to_do == 'pass':
             d2 = dict(tree)
             duration=None
             if 'BlockDuration' in d2:
@@ -683,7 +707,7 @@ def mkvparse(f, handler):
             if 'Block' in d2:
                 handle_block(d2['Block'][1], handler, current_cluster_timecode, timecode_scale, duration, header_removal_headers_for_tracks)
         else:
-            if type_!=EET.JUST_GO_ON and type_!=EET.MASTER:
+            if type_!=EET.JUST_GO_ON and type_!=EET.MASTER and what_to_do!='pass':
                 data = read_simple_element(f, type_, size)
 
         handler.ebml_top_element(id_, name, type_, data);
