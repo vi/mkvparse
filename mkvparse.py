@@ -489,11 +489,7 @@ class MatroskaHandler:
     def before_handling_an_element(self):
         pass
     def begin_handling_ebml_element(self, id_, name, type_, headersize, datasize):
-        if type_==EET.MASTER:
-            return 'read tree'
-        elif type_==EET.JUST_GO_ON:
-            return 'pass'
-        return 'pass'
+        return type_
     def element_data_available(self, id_, name, type_, headersize, data):
         pass
 
@@ -598,7 +594,6 @@ def mkvparse(f, handler):
         (id_, size, hsize) = (None, None, None)
         tree = None
         data = None
-        what_to_do = None
         (type_, name) = (None, None)
         try:
             if not resync_element_id:
@@ -624,17 +619,11 @@ def mkvparse(f, handler):
 
             (type_, name) = element_types_names[id_]
             (type_, name) = element_types_names[id_]
-            what_to_do =  handler.begin_handling_ebml_element(id_, name, type_, hsize, size)
+            type_ =  handler.begin_handling_ebml_element(id_, name, type_, hsize, size)
 
-            if what_to_do=='pass':
-                pass
-            elif what_to_do=='read tree':
+            if type_ == EET.MASTER:
                 tree = read_ebml_element_tree(f, size)
                 data = tree
-            elif type_==EET.JUST_GO_ON:
-                pass
-            elif what_to_do=='read blob':
-                data = f.read(size)
 
         except Exception:
             traceback.print_exc()
@@ -644,7 +633,6 @@ def mkvparse(f, handler):
                 continue;
             else:
                 break;
-        handler.element_data_available(id_, name, type_, hsize, data)
         
         if name=="EBML" and type(data) == list:
             d = dict(tree)
@@ -692,13 +680,13 @@ def mkvparse(f, handler):
                                 "to handle header removal compression\n")
             handler.tracks_available()
         # cluster contents:
-        elif name=="Timecode" and what_to_do == 'pass':
+        elif name=="Timecode" and type_ == EET.UNSIGNED:
             data=read_fixedlength_number(f, size, False)
             current_cluster_timecode = data;
-        elif name=="SimpleBlock" and what_to_do == 'pass':
+        elif name=="SimpleBlock" and type_ == EET.BINARY:
             data=f.read(size)
             handle_block(data, handler, current_cluster_timecode, timecode_scale, None,  header_removal_headers_for_tracks)
-        elif name=="BlockGroup" and what_to_do == 'pass':
+        elif name=="BlockGroup" and type_ == EET.MASTER:
             d2 = dict(tree)
             duration=None
             if 'BlockDuration' in d2:
@@ -707,7 +695,7 @@ def mkvparse(f, handler):
             if 'Block' in d2:
                 handle_block(d2['Block'][1], handler, current_cluster_timecode, timecode_scale, duration, header_removal_headers_for_tracks)
         else:
-            if type_!=EET.JUST_GO_ON and type_!=EET.MASTER and what_to_do!='pass':
+            if type_!=EET.JUST_GO_ON and type_!=EET.MASTER:
                 data = read_simple_element(f, type_, size)
 
         handler.ebml_top_element(id_, name, type_, data);
