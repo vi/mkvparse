@@ -363,6 +363,7 @@ class Xml2Mkv(handler.ContentHandler):
             pass
         elif name == "Segment":
             sys.stdout.write(b"\x18\x53\x80\x67"+b"\xFF")
+            sys.stdout.write(b"\xEC\x40\x80" + (b"\x00" * 128)) # for convenience of other mkv tools
             pass;
         elif name == "track" or \
              name == "duration" or \
