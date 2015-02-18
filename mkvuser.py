@@ -2,8 +2,9 @@
 import mkvparse
 import sys
 import binascii
+import datetime
 
-class MatroskaUser(mkvparse.MatroskaHandler):
+class MatroskaUser(mkvparse.MatroskaHandler):      
     def tracks_available(self):
         print("Tracks info:")
         for k in self.tracks:
@@ -14,6 +15,7 @@ class MatroskaUser(mkvparse.MatroskaHandler):
         print("Segment info:")
         for (k,(t_,v)) in self.segment_info:
             if t_ == mkvparse.EbmlElementType.BINARY: v = binascii.hexlify(v)
+            if t_ == mkvparse.EbmlElementType.DATE: v = str(datetime.datetime.utcfromtimestamp(v))
             print("    %s: %s"%(k,v))
 
     def frame(self, track_id, timestamp, data, more_laced_frames, duration, keyframe, invisible, discardable):
