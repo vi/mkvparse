@@ -12,6 +12,7 @@ import traceback
 from struct import unpack
 
 import sys
+import datetime
 
 if sys.version < '3':
     range=xrange
@@ -428,8 +429,8 @@ def read_simple_element(f, type_, size):
         data=read_ebml_element_tree(f, size)
     elif type_==EET.DATE:
         data=read_fixedlength_number(f, size, True)
-        data/=1000000000.0;
-        data+=978300000 # 2001-01-01T00:00:00,000000000
+        data*= 1e-9
+        data+= (datetime.datetime(2001, 1, 1) - datetime.datetime(1970, 1, 1)).total_seconds()
         # now should be UNIX date
     elif type_==EET.FLOAT:
         if size==4:
