@@ -17,8 +17,8 @@ setup(
     license = "BSD",
     keywords = "mkv matroska",
     url = "https://github.com/vi/mkvparse",
-    packages=['mkvparse'],
-	package_dir={'mkvparse': ''},
+    py_modules=['mkvparse', 'mkvuser'],
+    scripts=['mkv2xml', 'xml2mkv'],
     long_description=read('README.md'),
     classifiers=[
         "Development Status :: 4 - Beta",

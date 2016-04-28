@@ -28,11 +28,12 @@ class MatroskaUser(mkvparse.MatroskaHandler):
         print("Frame for %d ts=%.06f l=%d %s len=%d data=%s..." %
                 (track_id, timestamp, more_laced_frames, addstr, len(data), binascii.hexlify(data[0:10])))
 
-if sys.version >= '3':
-    sys.stdin = sys.stdin.detach()
+if __name__ == '__main__':
+    if sys.version >= '3':
+        sys.stdin = sys.stdin.detach()
 
-# Reads mkv input from stdin, parse it and print details to stdout
-mkvparse.mkvparse(sys.stdin, MatroskaUser())
+    # Reads mkv input from stdin, parse it and print details to stdout
+    mkvparse.mkvparse(sys.stdin, MatroskaUser())
 
 
 # Output example:
