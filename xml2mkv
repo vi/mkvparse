@@ -326,6 +326,8 @@ element_types_names = {
 	"TagDefault": (b"\x44\x84", EET.UNSIGNED),
 	"TagString": (b"\x44\x87", EET.TEXTU),
 	"TagBinary": (b"\x44\x85", EET.BINARY),
+	"CodecDelay": (b"\x56\xAA", EET.UNSIGNED),
+	"SeekPreRoll": (b"\x56\xBB", EET.UNSIGNED),
 }
 
 def ebml_element(element_id, data, length=None):
