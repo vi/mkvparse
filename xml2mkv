@@ -520,7 +520,7 @@ class Xml2Mkv(handler.ContentHandler):
                 relative_timecode = 0;
             if relative_timecode<0:
                 relative_timecode+=0x10000
-            flags = 0x02 # Xiph lacing
+            flags = 0x00
             if self.frame_keyframe: flags|=0x80
             if self.frame_discardable: flags|=0x01
             if self.frame_invisible: flags|=0x08
@@ -547,11 +547,21 @@ class Xml2Mkv(handler.ContentHandler):
                     xiph_lace+=b"\xFF"
                     l-=255
                 xiph_lace+=chr(l)
-            frame =  ebml_encode_number(self.frame_track) + \
-                     chr(relative_timecode>>8) + chr(relative_timecode&0xFF) + \
-                     chr(flags) + \
-                     chr(xiph_lace_count) + xiph_lace + \
-                     content
+
+            frame = None
+
+            if len(xiph_lace_lengths) <= 1:
+                frame =  ebml_encode_number(self.frame_track) + \
+                         chr(relative_timecode>>8) + chr(relative_timecode&0xFF) + \
+                         chr(flags) + \
+                         content
+            else:
+                flags |= 0x02 # Xiph lacing
+                frame =  ebml_encode_number(self.frame_track) + \
+                         chr(relative_timecode>>8) + chr(relative_timecode&0xFF) + \
+                         chr(flags) + \
+                         chr(xiph_lace_count) + xiph_lace + \
+                         content
 
             if name == "block":
                 if not self.frame_duration:
