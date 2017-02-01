@@ -408,6 +408,7 @@ element_types_names = {
 	0x4485: (EET.BINARY, "TagBinary"),
 	0x56AA: (EET.UNSIGNED, "CodecDelay"),
 	0x56BB: (EET.UNSIGNED, "SeekPreRoll"),
+	0xF0: (EET.UNSIGNED, "CueRelativePosition"),
 }
 
 def read_simple_element(f, type_, size):
