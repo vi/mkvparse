@@ -698,8 +698,8 @@ def mkvparse(f, handler):
             handler.segment_info_available()
             
             d = dict(tree)
-            if "TimecodeScale" in d:
-                timecode_scale = d["TimecodeScale"][1]
+            if "TimestampScale" in d:
+                timecode_scale = d["TimestampScale"][1]
         elif name=="Tracks" and type(data) == list:
             handler.tracks={}
             for (ten, (_t, track)) in tree:
@@ -715,8 +715,8 @@ def mkvparse(f, handler):
                 elif tt==0x11: d['type']='subtitle'
                 elif tt==0x12: d['type']='button'
                 elif tt==0x20: d['type']='control'
-                if 'TrackTimecodeScale' in d:
-                    sys.stderr.write("mkvparse: Warning: TrackTimecodeScale is not supported\n")
+                if 'TrackTimestampScale' in d:
+                    sys.stderr.write("mkvparse: Warning: TrackTimestampScale is not supported\n")
                 if 'ContentEncodings' in d:
                     try:
                         compr = dict(d["ContentEncodings"][1][0][1][1][0][1][1])
@@ -730,7 +730,7 @@ def mkvparse(f, handler):
                                 "to handle header removal compression\n")
             handler.tracks_available()
         # cluster contents:
-        elif name=="Timecode" and type_ == EET.UNSIGNED:
+        elif name=="Timestamp" and type_ == EET.UNSIGNED:
             data=read_fixedlength_number(f, size, False)
             current_cluster_timecode = data;
         elif name=="SimpleBlock" and type_ == EET.BINARY:

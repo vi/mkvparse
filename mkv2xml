@@ -137,6 +137,7 @@ class MatroskaToText(mkvparse.MatroskaHandler):
             opening_tag_content = name_
             if self.there_was_cluster and \
                 name_ != "Timecode" and \
+                name_ != "Timestamp" and \
                 name_ != "SilentTracks" and \
                 name_ != "Position" and \
                 name_ != "PrevSize" and \
@@ -220,7 +221,7 @@ if len(sys.argv)>1:
         banlist=[]
     if sys.argv[1]=="-C":
         nocluster_mode = True
-        banlist=["SeekHead", "CRC-32", "Void", "Cues", "PrevSize", "Position", "Cluster", "Timecode", "PrevSize", "EncryptedBlock", "BlockGroup", "SimpleBlock"]
+        banlist=["SeekHead", "CRC-32", "Void", "Cues", "PrevSize", "Position", "Cluster", "Timecode", "Timestamp", "PrevSize", "EncryptedBlock", "BlockGroup", "SimpleBlock"]
 
 chunklength = int(getenv("CHUNKLENGTH", "64"))
 
