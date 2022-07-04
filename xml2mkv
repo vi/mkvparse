@@ -20,11 +20,12 @@
 # and 
 #    cat somefile.mkv | ./mkv2xml -C | ./xml2mkv | mplayer -
 # should work.
-
-# xml2 and 2xml is another family of converters that can be used in conjunction with mkv2xml/xml2mkv. 
-# xml2/2xml are like gron/gron -u, but for XML instead of JSON.
+#
 # You can edit mkv file on the fly with chain like 
-#    ./mkv2xml -C < somefile.mkv | xml2 | sed 's!duration=.*!duration=2!' | 2xml | ./xml2mkv | mplayer -
+#    ./mkv2xml -C < somefile.mkv | xml2 | sed 's!duration=.*!duration=2!' | 2xml | ./xml2mkv | mpv -
+# 
+# (xml2/2xml are from another family of converters that can be used in conjunction with mkv2xml/xml2mkv
+# without buffering entire content in memory)
         
 
 import sys
