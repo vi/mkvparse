@@ -22,7 +22,7 @@
 # should work.
 
 # You can edit mkv file on the fly with chain like 
-#    ./mkv2xml -C < somefile.mkv | xml2 | sed 's!duration=.*!duration=2!' | 2xml | ./xml2mkv | mplayer -
+#    ./mkv2xml -C < somefile.mkv | xml2mkv | sed 's!duration=.*!duration=2!' | mkv2xml | ./xml2mkv | mplayer -
         
 
 import sys
